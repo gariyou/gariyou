@@ -67,6 +67,7 @@ export function ListEditor({ def, items, onChange, selectOptions }: Props) {
       {items.map((item, index) => {
         const open = openIds.has(item.id);
         const name = (item.values[def.titleKey] ?? "").trim();
+        const tag = def.tagKey ? (item.values[def.tagKey] ?? "").trim() : "";
         return (
           <div key={item.id} className="rounded-md border border-night-600 bg-night-900/60">
             <div className="flex items-center gap-2 px-3 py-2">
@@ -85,6 +86,11 @@ export function ListEditor({ def, items, onChange, selectOptions }: Props) {
                   {def.itemLabel}
                   {index + 1}
                   {name && <span className="ml-2 text-gold-300/90">{name}</span>}
+                  {tag && (
+                    <span className="ml-2 rounded-full border border-night-600 px-2 py-0.5 text-[10px] font-normal text-slate-400">
+                      {tag}
+                    </span>
+                  )}
                 </span>
               </button>
               <button

@@ -229,6 +229,7 @@ export const SECTIONS: SectionDef[] = [
     itemLabel: "シーン",
     addLabel: "シーンを追加",
     titleKey: "title",
+    tagKey: "chapter",
     fields: [
       { key: "number", label: "シーン番号", type: "text", placeholder: "1-1" },
       { key: "title", label: "シーンタイトル", type: "text", placeholder: "独房の声" },
@@ -253,9 +254,11 @@ export const SECTIONS: SectionDef[] = [
     fields: [
       { key: "name", label: "伏線名", type: "text", placeholder: "古い聖女伝説" },
       { key: "intro", label: "初出", type: "text", placeholder: "第一章。酒場の老人が語る昔話として" },
+      { key: "introChapter", label: "初出の章", type: "select" },
       { key: "presentation", label: "読者への見せ方", type: "textarea", placeholder: "世界観の雰囲気づくりの小話に見せかけ、重要性を悟らせない" },
       { key: "truth", label: "真相", type: "textarea", placeholder: "伝説の聖女は邪神そのものであり、主人公の能力の由来と繋がる" },
       { key: "payoff", label: "回収予定", type: "text", placeholder: "最終章。邪神の正体が明かされる場面" },
+      { key: "payoffChapter", label: "回収の章", type: "select" },
       { key: "effect", label: "回収時の効果", type: "textarea", placeholder: "序盤から読み返したくなる衝撃と、敵味方の構図の反転" },
     ],
   },
@@ -330,5 +333,5 @@ export function createEmptyState(): AppState {
       lists[section.id] = [];
     }
   }
-  return { records, lists, hiddenSections: [] };
+  return { records, lists, hiddenSections: [], template: "full" };
 }

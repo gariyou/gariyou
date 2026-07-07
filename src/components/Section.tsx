@@ -5,11 +5,20 @@ interface Props {
   title: string;
   /** 入力済み項目数などのバッジ表示。0 のときは非表示 */
   filledCount: number;
+  /** 警告バッジ表示（伏線の未回収警告など）。0 のときは非表示 */
+  warningCount?: number;
   defaultOpen?: boolean;
   children: ReactNode;
 }
 
-export function Section({ icon, title, filledCount, defaultOpen = false, children }: Props) {
+export function Section({
+  icon,
+  title,
+  filledCount,
+  warningCount = 0,
+  defaultOpen = false,
+  children,
+}: Props) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <section className="overflow-hidden rounded-lg border border-night-600 bg-night-800/60 shadow-lg shadow-black/20">
@@ -23,6 +32,11 @@ export function Section({ icon, title, filledCount, defaultOpen = false, childre
         <span className="font-serif-jp flex-1 text-sm font-semibold tracking-wider text-slate-100">
           {title}
         </span>
+        {warningCount > 0 && (
+          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+            ⚠ {warningCount}
+          </span>
+        )}
         {filledCount > 0 && (
           <span className="rounded-full bg-gold-400/15 px-2 py-0.5 text-[10px] font-medium text-gold-300">
             {filledCount}

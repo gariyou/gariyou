@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildPrompt } from "./prompt";
+import { buildPrompt, estimateTokens, type PromptFormat } from "./prompt";
 import { SECTIONS, createEmptyState } from "./schema";
+import { TEMPLATES } from "./templates";
 import type { AppState, ListItem } from "./types";
-import { newId, stateHasContent } from "./utils";
+import { chapterTitleList, newId, stateHasContent } from "./utils";
 import {
   projectKey,
   readIndex,
@@ -120,6 +121,9 @@ function mergeState(base: AppState, incoming: Partial<AppState>): AppState {
             typeof id === "string" && SECTIONS.some((section) => section.id === id),
         )
       : [...base.hiddenSections],
+    template: TEMPLATES.some((template) => template.id === incoming.template)
+      ? (incoming.template as string)
+      : base.template,
   };
   for (const section of SECTIONS) {
     if (section.kind === "record") {
@@ -172,8 +176,8 @@ export default function App() {
   const initial = useMemo(initialSetup, []);
   const [index, setIndex] = useState<ProjectIndex>(initial.index);
   const [state, setState] = useState<AppState>(initial.state);
-  const [copied, setCopied] = useState<"plain" | "markdown" | null>(null);
-  const [previewMode, setPreviewMode] = useState<"plain" | "markdown">("plain");
+  const [copied, setCopied] = useState<"current" | "markdown" | null>(null);
+  const [previewMode, setPreviewMode] = useState<PromptFormat>("plain");
   const [mobileView, setMobileView] = useState<"form" | "preview">("form");
   const [hasBackup, setHasBackup] = useState(() => readBackup() !== null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -248,16 +252,33 @@ export default function App() {
     setState(loadProjectState(remaining[0].id));
   };
 
-  const prompt = useMemo(() => buildPrompt(state, false), [state]);
-  const markdownPrompt = useMemo(() => buildPrompt(state, true), [state]);
+  const prompt = useMemo(() => buildPrompt(state, previewMode), [state, previewMode]);
+  const markdownPrompt = useMemo(() => buildPrompt(state, "markdown"), [state]);
 
-  // シーンの「所属章」セレクトに渡す章タイトル一覧
-  const chapterTitles = useMemo(() => {
-    const titles = (state.lists.chapters ?? [])
-      .map((item) => (item.values.title ?? "").trim())
-      .filter(Boolean);
-    return [...new Set(titles)];
-  }, [state.lists.chapters]);
+  // シーン・伏線の章セレクトに渡す章タイトル一覧
+  const chapterTitles = useMemo(() => chapterTitleList(state), [state.lists.chapters]);
+
+  // 伏線の未回収・リンク切れ警告（章構成が使われている場合のみチェックする）
+  const foreshadowWarnings = useMemo(() => {
+    if (chapterTitles.length === 0) return [];
+    const warnings: string[] = [];
+    (state.lists.foreshadows ?? []).forEach((item, index) => {
+      const values = item.values;
+      if (!Object.values(values).some((value) => value.trim() !== "")) return;
+      const name = (values.name ?? "").trim() || `伏線${index + 1}`;
+      const payoffChapter = (values.payoffChapter ?? "").trim();
+      if (!payoffChapter) {
+        warnings.push(`「${name}」の回収の章が未設定です`);
+      } else if (!chapterTitles.includes(payoffChapter)) {
+        warnings.push(`「${name}」の回収の章「${payoffChapter}」が章構成に見つかりません`);
+      }
+      const introChapter = (values.introChapter ?? "").trim();
+      if (introChapter && !chapterTitles.includes(introChapter)) {
+        warnings.push(`「${name}」の初出の章「${introChapter}」が章構成に見つかりません`);
+      }
+    });
+    return warnings;
+  }, [state.lists.foreshadows, chapterTitles]);
 
   const updateRecord = (sectionId: string, key: string, value: string | string[]) => {
     setState((prev) => ({
@@ -273,6 +294,40 @@ export default function App() {
     setState((prev) => ({ ...prev, lists: { ...prev.lists, [sectionId]: items } }));
   };
 
+  /** テンプレートを切り替え、出力セクションをテンプレート推奨値に合わせる */
+  const applyTemplate = (templateId: string) => {
+    const template = TEMPLATES.find((t) => t.id === templateId);
+    if (!template) return;
+    setState((prev) => ({
+      ...prev,
+      template: templateId,
+      hiddenSections: [...template.recommendedHidden],
+    }));
+  };
+
+  /** シーンを章構成の順に並べ替える（同じ章の中では現在の順序を保つ） */
+  const sortScenesByChapter = () => {
+    const items = state.lists.scenes ?? [];
+    const order = new Map(chapterTitles.map((title, position) => [title, position]));
+    const staleNames = [
+      ...new Set(
+        items
+          .map((item) => (item.values.chapter ?? "").trim())
+          .filter((name) => name && !order.has(name)),
+      ),
+    ];
+    const rank = (item: ListItem): number => {
+      const chapter = (item.values.chapter ?? "").trim();
+      if (!chapter) return chapterTitles.length + staleNames.length; // 未設定は最後
+      return order.get(chapter) ?? chapterTitles.length + staleNames.indexOf(chapter);
+    };
+    const next = items
+      .map((item, position) => ({ item, position }))
+      .sort((a, b) => rank(a.item) - rank(b.item) || a.position - b.position)
+      .map(({ item }) => item);
+    updateList("scenes", next);
+  };
+
   const toggleSectionOutput = (sectionId: string) => {
     setState((prev) => ({
       ...prev,
@@ -282,8 +337,8 @@ export default function App() {
     }));
   };
 
-  const copy = async (kind: "plain" | "markdown") => {
-    const text = kind === "plain" ? prompt : markdownPrompt;
+  const copy = async (kind: "current" | "markdown") => {
+    const text = kind === "current" ? prompt : markdownPrompt;
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -384,12 +439,40 @@ export default function App() {
             icon={section.icon}
             title={section.title}
             filledCount={(state.lists[section.id] ?? []).length}
+            warningCount={section.id === "foreshadows" ? foreshadowWarnings.length : 0}
           >
+            {section.id === "foreshadows" && foreshadowWarnings.length > 0 && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                <p className="mb-1 font-medium">⚠ 回収チェック</p>
+                <ul className="list-disc space-y-0.5 pl-4">
+                  {foreshadowWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {section.id === "scenes" &&
+              (state.lists.scenes ?? []).length > 1 &&
+              chapterTitles.length > 0 && (
+                <button
+                  type="button"
+                  onClick={sortScenesByChapter}
+                  className="rounded-md border border-night-600 bg-night-900 px-3 py-1.5 text-xs text-slate-400 transition-colors hover:border-gold-400/50 hover:text-gold-300"
+                >
+                  章構成の順に並べ替え
+                </button>
+              )}
             <ListEditor
               def={section}
               items={state.lists[section.id] ?? []}
               onChange={(items) => updateList(section.id, items)}
-              selectOptions={section.id === "scenes" ? { chapter: chapterTitles } : undefined}
+              selectOptions={
+                section.id === "scenes"
+                  ? { chapter: chapterTitles }
+                  : section.id === "foreshadows"
+                    ? { introChapter: chapterTitles, payoffChapter: chapterTitles }
+                    : undefined
+              }
             />
           </Section>
         ),
@@ -405,19 +488,21 @@ export default function App() {
         </h2>
         <div
           role="group"
-          aria-label="プレビュー形式"
+          aria-label="出力形式"
           className="flex overflow-hidden rounded-md border border-night-600 text-xs"
         >
           {(
             [
-              ["plain", "テキスト"],
-              ["markdown", "Markdown"],
+              ["plain", "テキスト", "汎用のプレーンテキスト形式"],
+              ["markdown", "Markdown", "ChatGPT / Cursor などに適した形式"],
+              ["xml", "XML", "Claude が得意とするタグ構造の形式"],
             ] as const
-          ).map(([mode, label]) => (
+          ).map(([mode, label, description]) => (
             <button
               key={mode}
               type="button"
               aria-pressed={previewMode === mode}
+              title={description}
               onClick={() => setPreviewMode(mode)}
               className={
                 "px-2.5 py-1.5 font-medium transition-colors " +
@@ -430,12 +515,35 @@ export default function App() {
             </button>
           ))}
         </div>
-        <button type="button" onClick={() => copy("plain")} className={actionButtonClass}>
-          {copied === "plain" ? "✓ コピーしました" : "コピー"}
+        <button type="button" onClick={() => copy("current")} className={actionButtonClass}>
+          {copied === "current" ? "✓ コピーしました" : "コピー"}
         </button>
         <button type="button" onClick={() => copy("markdown")} className={actionButtonClass}>
           {copied === "markdown" ? "✓ コピーしました" : "Markdown形式でコピー"}
         </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-night-600/70 px-4 py-2">
+        <span className="mr-1 text-[10px] tracking-wide text-slate-500">テンプレート:</span>
+        {TEMPLATES.map((template) => {
+          const active = state.template === template.id;
+          return (
+            <button
+              key={template.id}
+              type="button"
+              aria-pressed={active}
+              title="選択すると出力セクションもテンプレートの推奨構成に切り替わります"
+              onClick={() => applyTemplate(template.id)}
+              className={
+                "rounded-full border px-2.5 py-0.5 text-[10px] transition-colors " +
+                (active
+                  ? "border-gold-400/70 bg-gold-400/15 text-gold-300"
+                  : "border-night-600 bg-night-900 text-slate-400 hover:border-slate-500 hover:text-slate-300")
+              }
+            >
+              {template.label}
+            </button>
+          );
+        })}
       </div>
       <div className="flex flex-wrap items-center gap-1.5 border-b border-night-600/70 px-4 py-2">
         <span className="mr-1 text-[10px] tracking-wide text-slate-500">出力するセクション:</span>
@@ -460,11 +568,20 @@ export default function App() {
           );
         })}
       </div>
+      {foreshadowWarnings.length > 0 && (
+        <div className="border-b border-amber-500/30 bg-amber-500/5 px-4 py-2 text-[11px] leading-relaxed text-amber-300/90">
+          ⚠ 伏線の回収チェック（{foreshadowWarnings.length}件）: {foreshadowWarnings.join(" ／ ")}
+        </div>
+      )}
       <pre className="flex-1 overflow-auto whitespace-pre-wrap px-4 py-4 font-sans text-[13px] leading-relaxed text-slate-300">
-        {previewMode === "plain" ? prompt : markdownPrompt}
+        {prompt}
       </pre>
-      <div className="border-t border-night-600/70 px-4 py-2 text-right text-[11px] text-slate-500">
-        {(previewMode === "plain" ? prompt : markdownPrompt).length.toLocaleString()} 文字
+      <div
+        className="border-t border-night-600/70 px-4 py-2 text-right text-[11px] text-slate-500"
+        title="日本語はおおむね1文字≒1.1トークンとして概算しています"
+      >
+        {prompt.length.toLocaleString()} 文字 ・ 約{estimateTokens(prompt).toLocaleString()}{" "}
+        トークン（目安）
       </div>
     </div>
   );

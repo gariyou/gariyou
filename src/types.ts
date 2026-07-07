@@ -27,6 +27,8 @@ export interface ListSectionDef {
   addLabel: string;
   /** アイテムの見出しに使うフィールドの key */
   titleKey: string;
+  /** アイテムの見出し横にタグ表示するフィールドの key（例: シーンの所属章） */
+  tagKey?: string;
   fields: FieldDef[];
 }
 
@@ -44,4 +46,6 @@ export interface AppState {
   lists: Record<string, ListItem[]>;
   /** 出力プロンプトから除外するセクションの id */
   hiddenSections: string[];
+  /** 出力テンプレート（フル設計書／企画用／執筆用／校正用）の id */
+  template: string;
 }

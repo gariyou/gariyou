@@ -8,6 +8,14 @@ export function newId(): string {
   return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** 章構成に入力済みの章タイトル一覧（重複除去済み・入力順） */
+export function chapterTitleList(state: AppState): string[] {
+  const titles = (state.lists.chapters ?? [])
+    .map((item) => (item.values.title ?? "").trim())
+    .filter(Boolean);
+  return [...new Set(titles)];
+}
+
 /** 何かひとつでも入力されているか */
 export function stateHasContent(state: AppState): boolean {
   const recordFilled = Object.values(state.records).some((values) =>
