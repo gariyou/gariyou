@@ -130,10 +130,10 @@ function mergeState(base: AppState, incoming: Partial<AppState>): AppState {
         const value = source[field.key];
         if (field.type === "chips") {
           if (Array.isArray(value)) {
-            values[field.key] = value.filter(
-              (item): item is string =>
-                typeof item === "string" && (field.options ?? []).includes(item),
-            );
+            // 自由入力チップも取り込めるよう、文字列であれば選択肢外の値も受け入れる
+            values[field.key] = [
+              ...new Set(value.filter((item): item is string => typeof item === "string")),
+            ];
           }
         } else if (typeof value === "string") {
           values[field.key] = value;

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { FieldDef } from "../types";
 
 interface Props {
@@ -12,8 +13,14 @@ const inputClass =
   "transition-colors";
 
 export function FieldInput({ def, value, onChange }: Props) {
+  // 自由入力チップ用の下書き（chips以外のフィールドでは使われない）
+  const [draft, setDraft] = useState("");
+
   if (def.type === "chips") {
     const selected = Array.isArray(value) ? value : [];
+    const predefined = def.options ?? [];
+    // 定義済みの選択肢に加え、自由入力で追加された選択中の値もチップとして表示する
+    const custom = selected.filter((item) => !predefined.includes(item));
     const toggle = (option: string) => {
       onChange(
         selected.includes(option)
@@ -21,13 +28,19 @@ export function FieldInput({ def, value, onChange }: Props) {
           : [...selected, option],
       );
     };
+    const addCustom = () => {
+      const entry = draft.trim();
+      setDraft("");
+      if (!entry || selected.includes(entry)) return;
+      onChange([...selected, entry]);
+    };
     return (
       <div>
         <span className="mb-1.5 block text-xs font-medium tracking-wide text-slate-400">
           {def.label}
         </span>
         <div className="flex flex-wrap gap-1.5">
-          {(def.options ?? []).map((option) => {
+          {[...predefined, ...custom].map((option) => {
             const active = selected.includes(option);
             return (
               <button
@@ -46,6 +59,29 @@ export function FieldInput({ def, value, onChange }: Props) {
               </button>
             );
           })}
+          <span className="inline-flex items-center gap-1">
+            <input
+              type="text"
+              value={draft}
+              placeholder="自由入力で追加"
+              aria-label={`${def.label}に自由入力で追加`}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addCustom();
+                }
+              }}
+              className="w-32 rounded-full border border-dashed border-night-600 bg-night-900 px-3 py-1 text-xs text-slate-200 placeholder:text-slate-500/70 focus:border-gold-400/60 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={addCustom}
+              className="rounded-full border border-night-600 bg-night-800 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:border-gold-400/50 hover:text-gold-300"
+            >
+              追加
+            </button>
+          </span>
         </div>
       </div>
     );
