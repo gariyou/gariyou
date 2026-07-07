@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ListItem, ListSectionDef } from "../types";
+import { newId } from "../utils";
 import { FieldInput } from "./FieldInput";
 
 interface Props {
@@ -11,7 +12,7 @@ interface Props {
 function newItem(def: ListSectionDef): ListItem {
   const values: Record<string, string> = {};
   for (const field of def.fields) values[field.key] = "";
-  return { id: crypto.randomUUID(), values };
+  return { id: newId(), values };
 }
 
 export function ListEditor({ def, items, onChange }: Props) {
@@ -33,8 +34,14 @@ export function ListEditor({ def, items, onChange }: Props) {
     setOpenIds((prev) => new Set(prev).add(item.id));
   };
 
-  const removeItem = (id: string) => {
-    onChange(items.filter((item) => item.id !== id));
+  const removeItem = (target: ListItem, index: number) => {
+    // 何か入力済みのアイテムは、誤クリックで消えないよう確認を挟む
+    const hasContent = Object.values(target.values).some((value) => value.trim() !== "");
+    if (hasContent) {
+      const name = (target.values[def.titleKey] ?? "").trim() || `${def.itemLabel}${index + 1}`;
+      if (!window.confirm(`「${name}」を削除します。よろしいですか？`)) return;
+    }
+    onChange(items.filter((item) => item.id !== target.id));
   };
 
   const updateItem = (id: string, key: string, value: string) => {
@@ -72,7 +79,7 @@ export function ListEditor({ def, items, onChange }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => removeItem(item.id)}
+                onClick={() => removeItem(item, index)}
                 className="rounded px-2 py-0.5 text-[11px] text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
               >
                 削除

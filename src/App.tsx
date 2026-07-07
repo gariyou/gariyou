@@ -2,11 +2,43 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPrompt } from "./prompt";
 import { SECTIONS, createEmptyState } from "./schema";
 import type { AppState, ListItem } from "./types";
+import { newId, stateHasContent } from "./utils";
 import { ListEditor } from "./components/ListEditor";
 import { FieldInput } from "./components/FieldInput";
 import { Section } from "./components/Section";
 
 const STORAGE_KEY = "ai-novel-prompt-builder:v1";
+const BACKUP_KEY = "ai-novel-prompt-builder:backup";
+
+interface BackupPayload {
+  savedAt: string;
+  state: Partial<AppState>;
+}
+
+function readBackup(): BackupPayload | null {
+  try {
+    const raw = localStorage.getItem(BACKUP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as BackupPayload;
+    if (!parsed || typeof parsed !== "object" || !parsed.state) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** リセット・インポート・復元で失われる直前の状態を退避する */
+function writeBackup(state: AppState): boolean {
+  try {
+    localStorage.setItem(
+      BACKUP_KEY,
+      JSON.stringify({ savedAt: new Date().toISOString(), state } satisfies BackupPayload),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function loadState(): AppState {
   const empty = createEmptyState();
@@ -53,7 +85,7 @@ function mergeState(base: AppState, incoming: Partial<AppState>): AppState {
             const value = item.values?.[field.key];
             values[field.key] = typeof value === "string" ? value : "";
           }
-          return { id: typeof item.id === "string" ? item.id : crypto.randomUUID(), values };
+          return { id: typeof item.id === "string" ? item.id : newId(), values };
         });
     }
   }
@@ -74,15 +106,26 @@ export default function App() {
   const [state, setState] = useState<AppState>(loadState);
   const [copied, setCopied] = useState<"plain" | "markdown" | null>(null);
   const [mobileView, setMobileView] = useState<"form" | "preview">("form");
+  const [hasBackup, setHasBackup] = useState(() => readBackup() !== null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ローカルストレージへ自動保存（デバウンス付き）
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (error) {
+        // プライベートモードや容量超過では保存できないが、アプリ自体は使い続けられるようにする
+        console.warn("自動保存に失敗しました:", error);
+      }
     }, 400);
     return () => window.clearTimeout(timer);
   }, [state]);
+
+  /** 現在の状態をバックアップへ退避し、復元ボタンを表示する */
+  const backupCurrentState = () => {
+    if (stateHasContent(state) && writeBackup(state)) setHasBackup(true);
+  };
 
   const prompt = useMemo(() => buildPrompt(state, false), [state]);
   const markdownPrompt = useMemo(() => buildPrompt(state, true), [state]);
@@ -138,7 +181,9 @@ export default function App() {
     reader.onload = () => {
       try {
         const parsed = JSON.parse(String(reader.result)) as Partial<AppState>;
-        setState(mergeState(createEmptyState(), parsed));
+        const next = mergeState(createEmptyState(), parsed);
+        backupCurrentState();
+        setState(next);
       } catch {
         window.alert("JSONの読み込みに失敗しました。ファイル形式を確認してください。");
       }
@@ -147,9 +192,36 @@ export default function App() {
   };
 
   const reset = () => {
-    if (!window.confirm("すべての入力内容を消去します。よろしいですか？")) return;
+    const message = stateHasContent(state)
+      ? "すべての入力内容を消去します。よろしいですか？\n（直前の内容はバックアップされ、「バックアップを復元」で戻せます）"
+      : "すべての入力内容を消去します。よろしいですか？";
+    if (!window.confirm(message)) return;
+    backupCurrentState();
     setState(createEmptyState());
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // 消せなくても空の状態が自動保存で上書きするため問題ない
+    }
+  };
+
+  const restoreBackup = () => {
+    const backup = readBackup();
+    if (!backup) {
+      setHasBackup(false);
+      return;
+    }
+    const savedAt = new Date(backup.savedAt);
+    const label = Number.isNaN(savedAt.getTime()) ? "" : `${savedAt.toLocaleString()} 時点の`;
+    if (
+      !window.confirm(`${label}バックアップを復元します。現在の入力内容と入れ替わります。よろしいですか？`)
+    ) {
+      return;
+    }
+    const restored = mergeState(createEmptyState(), backup.state);
+    // 現在の状態を新しいバックアップにする（復元のやり直しができるように入れ替える）
+    writeBackup(state);
+    setState(restored);
   };
 
   const form = (
@@ -242,6 +314,11 @@ export default function App() {
               className="hidden"
               onChange={importJson}
             />
+            {hasBackup && (
+              <button type="button" onClick={restoreBackup} className={actionButtonClass}>
+                バックアップを復元
+              </button>
+            )}
             <button
               type="button"
               onClick={reset}
