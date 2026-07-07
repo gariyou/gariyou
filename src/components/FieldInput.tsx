@@ -52,6 +52,32 @@ export function FieldInput({ def, value, onChange }: Props) {
   }
 
   const text = typeof value === "string" ? value : "";
+
+  if (def.type === "select") {
+    const options = def.options ?? [];
+    // 選択肢から消えた保存値（章の改名・削除など）も選択状態のまま見えるようにする
+    const optionList = text && !options.includes(text) ? [...options, text] : options;
+    return (
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-medium tracking-wide text-slate-400">
+          {def.label}
+        </span>
+        <select
+          className={inputClass}
+          value={text}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">（未設定）</option>
+          {optionList.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-medium tracking-wide text-slate-400">

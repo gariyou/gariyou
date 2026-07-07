@@ -232,6 +232,7 @@ export const SECTIONS: SectionDef[] = [
     fields: [
       { key: "number", label: "シーン番号", type: "text", placeholder: "1-1" },
       { key: "title", label: "シーンタイトル", type: "text", placeholder: "独房の声" },
+      { key: "chapter", label: "所属章", type: "select" },
       { key: "characters", label: "登場人物", type: "text", placeholder: "ヴァイス、邪神（声のみ）" },
       { key: "place", label: "場所", type: "text", placeholder: "帝都地下牢・独房" },
       { key: "purpose", label: "目的", type: "textarea", placeholder: "主人公の絶望と、契約に至る心理の必然性を描く" },

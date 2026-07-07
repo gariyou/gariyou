@@ -1,4 +1,4 @@
-export type FieldType = "text" | "textarea" | "chips";
+export type FieldType = "text" | "textarea" | "chips" | "select";
 
 export interface FieldDef {
   key: string;

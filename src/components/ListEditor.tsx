@@ -7,6 +7,8 @@ interface Props {
   def: ListSectionDef;
   items: ListItem[];
   onChange: (items: ListItem[]) => void;
+  /** select型フィールドへ動的に渡す選択肢（例: シーンの「所属章」に章タイトル一覧） */
+  selectOptions?: Record<string, string[]>;
 }
 
 function newItem(def: ListSectionDef): ListItem {
@@ -15,7 +17,7 @@ function newItem(def: ListSectionDef): ListItem {
   return { id: newId(), values };
 }
 
-export function ListEditor({ def, items, onChange }: Props) {
+export function ListEditor({ def, items, onChange, selectOptions }: Props) {
   // 追加直後のアイテムだけ開いた状態にする
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
 
@@ -42,6 +44,14 @@ export function ListEditor({ def, items, onChange }: Props) {
       if (!window.confirm(`「${name}」を削除します。よろしいですか？`)) return;
     }
     onChange(items.filter((item) => item.id !== target.id));
+  };
+
+  const moveItem = (from: number, delta: -1 | 1) => {
+    const to = from + delta;
+    if (to < 0 || to >= items.length) return;
+    const next = [...items];
+    [next[from], next[to]] = [next[to], next[from]];
+    onChange(next);
   };
 
   const updateItem = (id: string, key: string, value: string) => {
@@ -79,6 +89,24 @@ export function ListEditor({ def, items, onChange }: Props) {
               </button>
               <button
                 type="button"
+                onClick={() => moveItem(index, -1)}
+                disabled={index === 0}
+                aria-label="上へ移動"
+                className="rounded px-1.5 py-0.5 text-[11px] text-slate-500 transition-colors hover:text-gold-300 disabled:opacity-30 disabled:hover:text-slate-500"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                onClick={() => moveItem(index, 1)}
+                disabled={index === items.length - 1}
+                aria-label="下へ移動"
+                className="rounded px-1.5 py-0.5 text-[11px] text-slate-500 transition-colors hover:text-gold-300 disabled:opacity-30 disabled:hover:text-slate-500"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
                 onClick={() => removeItem(item, index)}
                 className="rounded px-2 py-0.5 text-[11px] text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
               >
@@ -87,14 +115,20 @@ export function ListEditor({ def, items, onChange }: Props) {
             </div>
             {open && (
               <div className="space-y-3 border-t border-night-600/70 px-3 py-3">
-                {def.fields.map((field) => (
-                  <FieldInput
-                    key={field.key}
-                    def={field}
-                    value={item.values[field.key] ?? ""}
-                    onChange={(value) => updateItem(item.id, field.key, value as string)}
-                  />
-                ))}
+                {def.fields.map((field) => {
+                  const resolved =
+                    field.type === "select" && selectOptions?.[field.key]
+                      ? { ...field, options: selectOptions[field.key] }
+                      : field;
+                  return (
+                    <FieldInput
+                      key={field.key}
+                      def={resolved}
+                      value={item.values[field.key] ?? ""}
+                      onChange={(value) => updateItem(item.id, field.key, value as string)}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>

@@ -250,6 +250,14 @@ export default function App() {
   const prompt = useMemo(() => buildPrompt(state, false), [state]);
   const markdownPrompt = useMemo(() => buildPrompt(state, true), [state]);
 
+  // シーンの「所属章」セレクトに渡す章タイトル一覧
+  const chapterTitles = useMemo(() => {
+    const titles = (state.lists.chapters ?? [])
+      .map((item) => (item.values.title ?? "").trim())
+      .filter(Boolean);
+    return [...new Set(titles)];
+  }, [state.lists.chapters]);
+
   const updateRecord = (sectionId: string, key: string, value: string | string[]) => {
     setState((prev) => ({
       ...prev,
@@ -380,6 +388,7 @@ export default function App() {
               def={section}
               items={state.lists[section.id] ?? []}
               onChange={(items) => updateList(section.id, items)}
+              selectOptions={section.id === "scenes" ? { chapter: chapterTitles } : undefined}
             />
           </Section>
         ),
