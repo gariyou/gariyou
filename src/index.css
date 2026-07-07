@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  /* 夜空のような深い紺と金のアクセント */
+  --color-night-950: #0a0c12;
+  --color-night-900: #10131c;
+  --color-night-800: #171b27;
+  --color-night-700: #222736;
+  --color-night-600: #2e3446;
+  --color-gold-300: #e8c882;
+  --color-gold-400: #d4af6a;
+  --color-gold-500: #b8923f;
+}
+
+@layer utilities {
+  .font-serif-jp {
+    font-family: Georgia, "Hiragino Mincho ProN", "Yu Mincho", YuMincho, serif;
+  }
+}
+
+html {
+  color-scheme: dark;
+}

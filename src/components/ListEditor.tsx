@@ -1,0 +1,105 @@
+import { useState } from "react";
+import type { ListItem, ListSectionDef } from "../types";
+import { FieldInput } from "./FieldInput";
+
+interface Props {
+  def: ListSectionDef;
+  items: ListItem[];
+  onChange: (items: ListItem[]) => void;
+}
+
+function newItem(def: ListSectionDef): ListItem {
+  const values: Record<string, string> = {};
+  for (const field of def.fields) values[field.key] = "";
+  return { id: crypto.randomUUID(), values };
+}
+
+export function ListEditor({ def, items, onChange }: Props) {
+  // 追加直後のアイテムだけ開いた状態にする
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+
+  const toggleItem = (id: string) => {
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const addItem = () => {
+    const item = newItem(def);
+    onChange([...items, item]);
+    setOpenIds((prev) => new Set(prev).add(item.id));
+  };
+
+  const removeItem = (id: string) => {
+    onChange(items.filter((item) => item.id !== id));
+  };
+
+  const updateItem = (id: string, key: string, value: string) => {
+    onChange(
+      items.map((item) =>
+        item.id === id ? { ...item, values: { ...item.values, [key]: value } } : item,
+      ),
+    );
+  };
+
+  return (
+    <div className="space-y-3">
+      {items.map((item, index) => {
+        const open = openIds.has(item.id);
+        const name = (item.values[def.titleKey] ?? "").trim();
+        return (
+          <div key={item.id} className="rounded-md border border-night-600 bg-night-900/60">
+            <div className="flex items-center gap-2 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => toggleItem(item.id)}
+                aria-expanded={open}
+                className="flex flex-1 items-center gap-2 text-left"
+              >
+                <span
+                  className={`text-[10px] text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+                >
+                  ▼
+                </span>
+                <span className="text-xs font-medium text-slate-300">
+                  {def.itemLabel}
+                  {index + 1}
+                  {name && <span className="ml-2 text-gold-300/90">{name}</span>}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => removeItem(item.id)}
+                className="rounded px-2 py-0.5 text-[11px] text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
+              >
+                削除
+              </button>
+            </div>
+            {open && (
+              <div className="space-y-3 border-t border-night-600/70 px-3 py-3">
+                {def.fields.map((field) => (
+                  <FieldInput
+                    key={field.key}
+                    def={field}
+                    value={item.values[field.key] ?? ""}
+                    onChange={(value) => updateItem(item.id, field.key, value as string)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        onClick={addItem}
+        className="w-full rounded-md border border-dashed border-gold-400/40 px-3 py-2 text-xs font-medium text-gold-300 transition-colors hover:border-gold-400/70 hover:bg-gold-400/10"
+      >
+        ＋ {def.addLabel}
+      </button>
+    </div>
+  );
+}
