@@ -173,6 +173,7 @@ export default function App() {
   const [index, setIndex] = useState<ProjectIndex>(initial.index);
   const [state, setState] = useState<AppState>(initial.state);
   const [copied, setCopied] = useState<"plain" | "markdown" | null>(null);
+  const [previewMode, setPreviewMode] = useState<"plain" | "markdown">("plain");
   const [mobileView, setMobileView] = useState<"form" | "preview">("form");
   const [hasBackup, setHasBackup] = useState(() => readBackup() !== null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -402,6 +403,33 @@ export default function App() {
         <h2 className="font-serif-jp mr-auto text-sm font-semibold tracking-wider text-slate-100">
           完成プロンプト
         </h2>
+        <div
+          role="group"
+          aria-label="プレビュー形式"
+          className="flex overflow-hidden rounded-md border border-night-600 text-xs"
+        >
+          {(
+            [
+              ["plain", "テキスト"],
+              ["markdown", "Markdown"],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={previewMode === mode}
+              onClick={() => setPreviewMode(mode)}
+              className={
+                "px-2.5 py-1.5 font-medium transition-colors " +
+                (previewMode === mode
+                  ? "bg-gold-400/15 text-gold-300"
+                  : "bg-night-800 text-slate-400 hover:text-slate-300")
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <button type="button" onClick={() => copy("plain")} className={actionButtonClass}>
           {copied === "plain" ? "✓ コピーしました" : "コピー"}
         </button>
@@ -433,10 +461,10 @@ export default function App() {
         })}
       </div>
       <pre className="flex-1 overflow-auto whitespace-pre-wrap px-4 py-4 font-sans text-[13px] leading-relaxed text-slate-300">
-        {prompt}
+        {previewMode === "plain" ? prompt : markdownPrompt}
       </pre>
       <div className="border-t border-night-600/70 px-4 py-2 text-right text-[11px] text-slate-500">
-        {prompt.length.toLocaleString()} 文字
+        {(previewMode === "plain" ? prompt : markdownPrompt).length.toLocaleString()} 文字
       </div>
     </div>
   );
