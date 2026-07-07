@@ -43,14 +43,16 @@ npm install
 # 開発サーバーの起動（http://localhost:5173）
 npm run dev
 
-# 本番ビルド（dist/ に静的ファイルを出力）
+# 本番ビルド（dist/index.html に単一ファイルで出力）
 npm run build
 
 # ビルド結果のプレビュー
 npm run preview
 ```
 
-ビルド後の `dist/` は静的ファイルのみなので、GitHub Pages / Cloudflare Pages / Netlify / Vercel などにそのまま配置できます。
+ビルドは JS/CSS をすべて埋め込んだ**単一の `dist/index.html`** を出力します。このファイルは**ダブルクリックするだけでブラウザで起動**でき、サーバーもインターネット接続も不要です。デスクトップに置いたり、他のPCにコピーして使えます（GitHub Pages / Netlify などへの配置も従来どおり可能です）。
+
+なお、入力データは「開いたブラウザ」の localStorage に保存されます。別のブラウザやPCに移るときは「JSON でエクスポート」→「JSON をインポート」でデータを引き継いでください。
 
 ## 使い方
 

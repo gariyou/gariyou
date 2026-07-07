@@ -355,15 +355,12 @@ export default function App() {
   };
 
   const exportJson = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
+    // blob URLだとfile://で開いたときにファイル名が失われるため、データURIでダウンロードする
+    const json = JSON.stringify(state, null, 2);
     const anchor = document.createElement("a");
-    anchor.href = url;
+    anchor.href = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
     anchor.download = `${deriveProjectName(state).replace(/[\\/:*?"<>|]/g, "_")}.json`;
     anchor.click();
-    URL.revokeObjectURL(url);
   };
 
   const importJson: React.ChangeEventHandler<HTMLInputElement> = (event) => {
