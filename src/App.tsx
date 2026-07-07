@@ -3,11 +3,21 @@ import { buildPrompt } from "./prompt";
 import { SECTIONS, createEmptyState } from "./schema";
 import type { AppState, ListItem } from "./types";
 import { newId, stateHasContent } from "./utils";
+import {
+  projectKey,
+  readIndex,
+  readLegacyState,
+  removeLegacyState,
+  safeGet,
+  safeRemove,
+  safeSet,
+  writeIndex,
+  type ProjectIndex,
+} from "./storage";
 import { ListEditor } from "./components/ListEditor";
 import { FieldInput } from "./components/FieldInput";
 import { Section } from "./components/Section";
 
-const STORAGE_KEY = "ai-novel-prompt-builder:v1";
 const BACKUP_KEY = "ai-novel-prompt-builder:backup";
 
 interface BackupPayload {
@@ -40,16 +50,63 @@ function writeBackup(state: AppState): boolean {
   }
 }
 
-function loadState(): AppState {
+/** プロジェクト名は作品タイトル（なければ仮タイトル）から自動で決める */
+function deriveProjectName(state: AppState): string {
+  const basic = state.records.basic ?? {};
+  const title = typeof basic.title === "string" ? basic.title.trim() : "";
+  const tentative = typeof basic.tentativeTitle === "string" ? basic.tentativeTitle.trim() : "";
+  return title || tentative || "無題の作品";
+}
+
+function loadProjectState(id: string): AppState {
   const empty = createEmptyState();
+  const raw = safeGet(projectKey(id));
+  if (!raw) return empty;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return empty;
-    const parsed = JSON.parse(raw) as Partial<AppState>;
-    return mergeState(empty, parsed);
+    return mergeState(empty, JSON.parse(raw) as Partial<AppState>);
   } catch {
     return empty;
   }
+}
+
+/** プロジェクト一覧を読み込む。初回起動時は旧単一スロット保存から移行する */
+function initialSetup(): { index: ProjectIndex; state: AppState } {
+  const existing = readIndex();
+  if (existing) return { index: existing, state: loadProjectState(existing.activeId) };
+
+  let state = createEmptyState();
+  const legacy = readLegacyState();
+  if (legacy) {
+    try {
+      state = mergeState(createEmptyState(), JSON.parse(legacy) as Partial<AppState>);
+    } catch {
+      // 壊れた保存データは捨てて新規開始する
+    }
+  }
+  const id = newId();
+  const index: ProjectIndex = {
+    activeId: id,
+    projects: [{ id, name: deriveProjectName(state), updatedAt: new Date().toISOString() }],
+  };
+  safeSet(projectKey(id), JSON.stringify(state));
+  writeIndex(index);
+  removeLegacyState();
+  return { index, state };
+}
+
+/** 現在のプロジェクトを保存し、名前と更新日時を反映したインデックスを返す */
+function persistProject(state: AppState, index: ProjectIndex): ProjectIndex {
+  safeSet(projectKey(index.activeId), JSON.stringify(state));
+  const next: ProjectIndex = {
+    ...index,
+    projects: index.projects.map((meta) =>
+      meta.id === index.activeId
+        ? { ...meta, name: deriveProjectName(state), updatedAt: new Date().toISOString() }
+        : meta,
+    ),
+  };
+  writeIndex(next);
+  return next;
 }
 
 /** 保存データやインポートデータを、現在のスキーマに合わせて安全に取り込む */
@@ -103,28 +160,82 @@ const actionButtonClass =
   "transition-colors hover:border-gold-400/50 hover:text-gold-300";
 
 export default function App() {
-  const [state, setState] = useState<AppState>(loadState);
+  const initial = useMemo(initialSetup, []);
+  const [index, setIndex] = useState<ProjectIndex>(initial.index);
+  const [state, setState] = useState<AppState>(initial.state);
   const [copied, setCopied] = useState<"plain" | "markdown" | null>(null);
   const [mobileView, setMobileView] = useState<"form" | "preview">("form");
   const [hasBackup, setHasBackup] = useState(() => readBackup() !== null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ローカルストレージへ自動保存（デバウンス付き）
+  // 現在のプロジェクトへ自動保存（デバウンス付き）
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (error) {
-        // プライベートモードや容量超過では保存できないが、アプリ自体は使い続けられるようにする
-        console.warn("自動保存に失敗しました:", error);
-      }
+      const next = persistProject(state, index);
+      // 作品タイトル由来のプロジェクト名が変わったときだけ画面側も更新する
+      const nameOf = (idx: ProjectIndex) =>
+        idx.projects.find((meta) => meta.id === idx.activeId)?.name;
+      if (nameOf(index) !== nameOf(next)) setIndex(next);
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [state]);
+  }, [state, index]);
 
   /** 現在の状態をバックアップへ退避し、復元ボタンを表示する */
   const backupCurrentState = () => {
     if (stateHasContent(state) && writeBackup(state)) setHasBackup(true);
+  };
+
+  const switchProject = (id: string) => {
+    if (id === index.activeId) return;
+    // デバウンス待ちの編集を失わないよう、切り替え前に確実に保存する
+    const saved = persistProject(state, index);
+    const next: ProjectIndex = { ...saved, activeId: id };
+    writeIndex(next);
+    setIndex(next);
+    setState(loadProjectState(id));
+  };
+
+  const createProject = () => {
+    const saved = persistProject(state, index);
+    const id = newId();
+    const empty = createEmptyState();
+    safeSet(projectKey(id), JSON.stringify(empty));
+    const next: ProjectIndex = {
+      activeId: id,
+      projects: [...saved.projects, { id, name: "無題の作品", updatedAt: new Date().toISOString() }],
+    };
+    writeIndex(next);
+    setIndex(next);
+    setState(empty);
+  };
+
+  const deleteProject = () => {
+    const name = index.projects.find((meta) => meta.id === index.activeId)?.name ?? "無題の作品";
+    const message = stateHasContent(state)
+      ? `作品「${name}」を削除します。よろしいですか？\n（直前の内容はバックアップされ、「バックアップを復元」で戻せます）`
+      : `作品「${name}」を削除します。よろしいですか？`;
+    if (!window.confirm(message)) return;
+    backupCurrentState();
+    safeRemove(projectKey(index.activeId));
+    const remaining = index.projects.filter((meta) => meta.id !== index.activeId);
+    if (remaining.length === 0) {
+      // 最後の1件を消したら、空の作品を作り直す
+      const id = newId();
+      const empty = createEmptyState();
+      safeSet(projectKey(id), JSON.stringify(empty));
+      const next: ProjectIndex = {
+        activeId: id,
+        projects: [{ id, name: "無題の作品", updatedAt: new Date().toISOString() }],
+      };
+      writeIndex(next);
+      setIndex(next);
+      setState(empty);
+      return;
+    }
+    const next: ProjectIndex = { activeId: remaining[0].id, projects: remaining };
+    writeIndex(next);
+    setIndex(next);
+    setState(loadProjectState(remaining[0].id));
   };
 
   const prompt = useMemo(() => buildPrompt(state, false), [state]);
@@ -168,7 +279,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "novel-prompt.json";
+    anchor.download = `${deriveProjectName(state).replace(/[\\/:*?"<>|]/g, "_")}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -197,12 +308,8 @@ export default function App() {
       : "すべての入力内容を消去します。よろしいですか？";
     if (!window.confirm(message)) return;
     backupCurrentState();
+    // 空の状態が自動保存でプロジェクトへ書き込まれる
     setState(createEmptyState());
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // 消せなくても空の状態が自動保存で上書きするため問題ない
-    }
   };
 
   const restoreBackup = () => {
@@ -297,6 +404,29 @@ export default function App() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={index.activeId}
+              onChange={(event) => switchProject(event.target.value)}
+              aria-label="作品の切り替え"
+              className="max-w-[11rem] rounded-md border border-night-600 bg-night-800 px-2 py-1.5 text-xs font-medium text-slate-200 focus:border-gold-400/60 focus:outline-none"
+            >
+              {index.projects.map((meta) => (
+                <option key={meta.id} value={meta.id}>
+                  {meta.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={createProject} className={actionButtonClass}>
+              ＋ 新規作品
+            </button>
+            <button
+              type="button"
+              onClick={deleteProject}
+              className="rounded-md border border-night-600 bg-night-800 px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-red-500/50 hover:text-red-400"
+            >
+              作品を削除
+            </button>
+            <span aria-hidden className="mx-1 hidden h-4 w-px bg-night-600 sm:block" />
             <button type="button" onClick={exportJson} className={actionButtonClass}>
               JSONでエクスポート
             </button>
