@@ -111,7 +111,16 @@ function persistProject(state: AppState, index: ProjectIndex): ProjectIndex {
 
 /** 保存データやインポートデータを、現在のスキーマに合わせて安全に取り込む */
 function mergeState(base: AppState, incoming: Partial<AppState>): AppState {
-  const next: AppState = { records: { ...base.records }, lists: { ...base.lists } };
+  const next: AppState = {
+    records: { ...base.records },
+    lists: { ...base.lists },
+    hiddenSections: Array.isArray(incoming.hiddenSections)
+      ? incoming.hiddenSections.filter(
+          (id): id is string =>
+            typeof id === "string" && SECTIONS.some((section) => section.id === id),
+        )
+      : [...base.hiddenSections],
+  };
   for (const section of SECTIONS) {
     if (section.kind === "record") {
       const source = incoming.records?.[section.id];
@@ -255,6 +264,15 @@ export default function App() {
     setState((prev) => ({ ...prev, lists: { ...prev.lists, [sectionId]: items } }));
   };
 
+  const toggleSectionOutput = (sectionId: string) => {
+    setState((prev) => ({
+      ...prev,
+      hiddenSections: prev.hiddenSections.includes(sectionId)
+        ? prev.hiddenSections.filter((id) => id !== sectionId)
+        : [...prev.hiddenSections, sectionId],
+    }));
+  };
+
   const copy = async (kind: "plain" | "markdown") => {
     const text = kind === "plain" ? prompt : markdownPrompt;
     try {
@@ -381,6 +399,29 @@ export default function App() {
         <button type="button" onClick={() => copy("markdown")} className={actionButtonClass}>
           {copied === "markdown" ? "✓ コピーしました" : "Markdown形式でコピー"}
         </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-night-600/70 px-4 py-2">
+        <span className="mr-1 text-[10px] tracking-wide text-slate-500">出力するセクション:</span>
+        {SECTIONS.map((section) => {
+          const included = !state.hiddenSections.includes(section.id);
+          return (
+            <button
+              key={section.id}
+              type="button"
+              aria-pressed={included}
+              onClick={() => toggleSectionOutput(section.id)}
+              title={included ? "クリックで出力から除外" : "クリックで出力に含める"}
+              className={
+                "rounded-full border px-2 py-0.5 text-[10px] transition-colors " +
+                (included
+                  ? "border-gold-400/50 bg-gold-400/10 text-gold-300"
+                  : "border-night-600 bg-night-900 text-slate-500 line-through hover:text-slate-400")
+              }
+            >
+              {section.title}
+            </button>
+          );
+        })}
       </div>
       <pre className="flex-1 overflow-auto whitespace-pre-wrap px-4 py-4 font-sans text-[13px] leading-relaxed text-slate-300">
         {prompt}

@@ -329,5 +329,5 @@ export function createEmptyState(): AppState {
       lists[section.id] = [];
     }
   }
-  return { records, lists };
+  return { records, lists, hiddenSections: [] };
 }

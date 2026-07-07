@@ -42,4 +42,6 @@ export interface ListItem {
 export interface AppState {
   records: Record<string, RecordValues>;
   lists: Record<string, ListItem[]>;
+  /** 出力プロンプトから除外するセクションの id */
+  hiddenSections: string[];
 }

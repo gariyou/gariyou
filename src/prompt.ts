@@ -55,8 +55,10 @@ function listBody(
 /** 入力状態から完成プロンプトを組み立てる。未入力の項目・セクションは省略する。 */
 export function buildPrompt(state: AppState, markdown: boolean): string {
   const parts: string[] = [HEADER];
+  const hidden = new Set(state.hiddenSections ?? []);
 
   for (const section of SECTIONS) {
+    if (hidden.has(section.id)) continue;
     let body: string[];
     if (section.kind === "record") {
       body = recordBody(section.fields, state.records[section.id] ?? {}, markdown);
