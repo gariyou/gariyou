@@ -83,7 +83,11 @@ npm run preview
 使い方:
 
 - **Claude Code** — このリポジトリでセッションを開き `/novel-prompt` と入力（または「小説のプロンプトを作りたい」と話しかける）
-- **claude.ai / Cowork** — `.claude/skills/novel-prompt/` フォルダを zip にして、claude.ai の 設定 → 機能（Capabilities）→ スキル からアップロード
+- **claude.ai / Cowork** — `.claude/skills/novel-prompt/` の**中身**（SKILL.md と references/ が zip の直下に来るように）を zip にして、claude.ai の 設定 → 機能（Capabilities）→ スキル からアップロード。フォルダごと zip にすると「SKILL.md must be in the top-level folder」エラーになるので注意
+
+  ```bash
+  cd .claude/skills/novel-prompt && zip -r ../novel-prompt-skill.zip SKILL.md references
+  ```
 
 ## 改良案
 
