@@ -15,6 +15,28 @@
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px">
+        このアプリの動作には JavaScript が必要です。ブラウザの設定で JavaScript
+        を有効にしてください。
+      </div>
+    </noscript>
+    <script>
+      // 起動に失敗したとき、白い画面ではなくエラー内容を表示する
+      window.addEventListener("error", function (event) {
+        var root = document.getElementById("root");
+        if (!root || root.childElementCount > 0) return;
+        root.innerHTML =
+          '<div style="font-family:sans-serif;max-width:640px;margin:40px auto;padding:20px 24px;border:1px solid #c0392b;border-radius:8px;background:#fff;color:#333">' +
+          "<h2 style=\"margin-top:0;color:#c0392b\">アプリの起動に失敗しました</h2>" +
+          "<p>お使いのブラウザが古い可能性があります。最新の Chrome / Edge / Firefox / Safari でこのファイルを開き直してください。</p>" +
+          '<p style="font-size:12px;color:#777;word-break:break-all">エラー: ' +
+          (event.message || event.type || "不明") +
+          "<br>ブラウザ: " +
+          navigator.userAgent +
+          "</p></div>";
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
