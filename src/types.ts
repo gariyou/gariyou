@@ -1,3 +1,6 @@
+/** 作品タイプ。セクション構成・テンプレート・厳守事項がこれで切り替わる */
+export type Mode = "novel" | "rpg";
+
 export type FieldType = "text" | "textarea" | "chips" | "select";
 
 export interface FieldDef {
@@ -42,6 +45,8 @@ export interface ListItem {
 }
 
 export interface AppState {
+  /** 作品タイプ（省略時は novel として扱う） */
+  mode: Mode;
   records: Record<string, RecordValues>;
   lists: Record<string, ListItem[]>;
   /** 出力プロンプトから除外するセクションの id */

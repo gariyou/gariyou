@@ -1,5 +1,5 @@
-import { SECTIONS, STRICT_RULES } from "./schema";
-import { TEMPLATES } from "./templates";
+import { getSections, getStrictRules } from "./schema";
+import { getTemplates } from "./templates";
 import { chapterTitleList } from "./utils";
 import type { AppState, FieldDef, ListItem, ListSectionDef, RecordValues } from "./types";
 
@@ -127,12 +127,14 @@ function wrapSection(
 
 /** 入力状態から完成プロンプトを組み立てる。未入力の項目・セクションは省略する。 */
 export function buildPrompt(state: AppState, format: PromptFormat): string {
-  const template = TEMPLATES.find((t) => t.id === state.template) ?? TEMPLATES[0];
+  const mode = state.mode ?? "novel";
+  const templates = getTemplates(mode);
+  const template = templates.find((t) => t.id === state.template) ?? templates[0];
   const hidden = new Set(state.hiddenSections ?? []);
   const chapterTitles = chapterTitleList(state);
 
   const sectionParts: string[] = [];
-  for (const section of SECTIONS) {
+  for (const section of getSections(mode)) {
     if (hidden.has(section.id)) continue;
     let body: string[];
     if (section.kind === "record") {
@@ -158,7 +160,7 @@ export function buildPrompt(state: AppState, format: PromptFormat): string {
   parts.push(
     wrapSection(
       "厳守事項",
-      STRICT_RULES.map((rule) => `- ${rule}`),
+      getStrictRules(mode).map((rule) => `- ${rule}`),
       format,
       false,
     ),

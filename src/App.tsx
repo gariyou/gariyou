@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPrompt, estimateTokens, type PromptFormat } from "./prompt";
-import { SECTIONS, createEmptyState } from "./schema";
-import { TEMPLATES } from "./templates";
-import type { AppState, ListItem } from "./types";
+import { MERGE_SECTIONS, MODES, createEmptyState, getSections } from "./schema";
+import { TEMPLATE_IDS, getTemplates } from "./templates";
+import type { AppState, ListItem, Mode } from "./types";
 import { chapterTitleList, newId, stateHasContent } from "./utils";
 import {
   projectKey,
@@ -110,22 +110,23 @@ function persistProject(state: AppState, index: ProjectIndex): ProjectIndex {
   return next;
 }
 
-/** 保存データやインポートデータを、現在のスキーマに合わせて安全に取り込む */
+/** 保存データやインポートデータを、両モード統合スキーマに合わせて安全に取り込む */
 function mergeState(base: AppState, incoming: Partial<AppState>): AppState {
   const next: AppState = {
+    mode: incoming.mode === "rpg" || incoming.mode === "novel" ? incoming.mode : base.mode,
     records: { ...base.records },
     lists: { ...base.lists },
     hiddenSections: Array.isArray(incoming.hiddenSections)
       ? incoming.hiddenSections.filter(
           (id): id is string =>
-            typeof id === "string" && SECTIONS.some((section) => section.id === id),
+            typeof id === "string" && MERGE_SECTIONS.some((section) => section.id === id),
         )
       : [...base.hiddenSections],
-    template: TEMPLATES.some((template) => template.id === incoming.template)
+    template: TEMPLATE_IDS.includes(incoming.template as string)
       ? (incoming.template as string)
       : base.template,
   };
-  for (const section of SECTIONS) {
+  for (const section of MERGE_SECTIONS) {
     if (section.kind === "record") {
       const source = incoming.records?.[section.id];
       if (!source || typeof source !== "object") continue;
@@ -162,10 +163,15 @@ function mergeState(base: AppState, incoming: Partial<AppState>): AppState {
   return next;
 }
 
-function countFilled(values: Record<string, string | string[]>): number {
-  return Object.values(values).filter((value) =>
-    Array.isArray(value) ? value.length > 0 : value.trim() !== "",
-  ).length;
+/** 現在のモードのフィールドだけを対象に、入力済み項目数を数える */
+function countFilled(
+  values: Record<string, string | string[]>,
+  fields: { key: string }[],
+): number {
+  return fields.filter((field) => {
+    const value = values[field.key];
+    return Array.isArray(value) ? value.length > 0 : (value ?? "").trim() !== "";
+  }).length;
 }
 
 const actionButtonClass =
@@ -252,6 +258,9 @@ export default function App() {
     setState(loadProjectState(remaining[0].id));
   };
 
+  const sections = useMemo(() => getSections(state.mode), [state.mode]);
+  const templates = useMemo(() => getTemplates(state.mode), [state.mode]);
+
   const prompt = useMemo(() => buildPrompt(state, previewMode), [state, previewMode]);
   const markdownPrompt = useMemo(() => buildPrompt(state, "markdown"), [state]);
 
@@ -261,6 +270,8 @@ export default function App() {
   // 伏線の未回収・リンク切れ警告（章構成が使われている場合のみチェックする）
   const foreshadowWarnings = useMemo(() => {
     if (chapterTitles.length === 0) return [];
+    const chapterWord = state.mode === "rpg" ? "章・クエスト" : "章";
+    const chaptersTitle = state.mode === "rpg" ? "章・クエスト構成" : "章構成";
     const warnings: string[] = [];
     (state.lists.foreshadows ?? []).forEach((item, index) => {
       const values = item.values;
@@ -268,17 +279,28 @@ export default function App() {
       const name = (values.name ?? "").trim() || `伏線${index + 1}`;
       const payoffChapter = (values.payoffChapter ?? "").trim();
       if (!payoffChapter) {
-        warnings.push(`「${name}」の回収の章が未設定です`);
+        warnings.push(`「${name}」の回収の${chapterWord}が未設定です`);
       } else if (!chapterTitles.includes(payoffChapter)) {
-        warnings.push(`「${name}」の回収の章「${payoffChapter}」が章構成に見つかりません`);
+        warnings.push(`「${name}」の回収の${chapterWord}「${payoffChapter}」が${chaptersTitle}に見つかりません`);
       }
       const introChapter = (values.introChapter ?? "").trim();
       if (introChapter && !chapterTitles.includes(introChapter)) {
-        warnings.push(`「${name}」の初出の章「${introChapter}」が章構成に見つかりません`);
+        warnings.push(`「${name}」の初出の${chapterWord}「${introChapter}」が${chaptersTitle}に見つかりません`);
       }
     });
     return warnings;
-  }, [state.lists.foreshadows, chapterTitles]);
+  }, [state.lists.foreshadows, chapterTitles, state.mode]);
+
+  /** 作品タイプを切り替える。出力セクションは新モードでの現テンプレート推奨値に合わせ直す */
+  const switchMode = (mode: Mode) => {
+    if (mode === state.mode) return;
+    const template = getTemplates(mode).find((t) => t.id === state.template);
+    setState((prev) => ({
+      ...prev,
+      mode,
+      hiddenSections: [...(template?.recommendedHidden ?? [])],
+    }));
+  };
 
   const updateRecord = (sectionId: string, key: string, value: string | string[]) => {
     setState((prev) => ({
@@ -296,7 +318,7 @@ export default function App() {
 
   /** テンプレートを切り替え、出力セクションをテンプレート推奨値に合わせる */
   const applyTemplate = (templateId: string) => {
-    const template = TEMPLATES.find((t) => t.id === templateId);
+    const template = templates.find((t) => t.id === templateId);
     if (!template) return;
     setState((prev) => ({
       ...prev,
@@ -412,13 +434,43 @@ export default function App() {
 
   const form = (
     <div className="space-y-3">
-      {SECTIONS.map((section, index) =>
+      <div className="flex items-center gap-3 rounded-lg border border-night-600 bg-night-800/60 px-4 py-3">
+        <span className="font-serif-jp text-xs font-semibold tracking-wider text-slate-300">
+          作品タイプ
+        </span>
+        <div
+          role="group"
+          aria-label="作品タイプ"
+          className="flex overflow-hidden rounded-md border border-night-600 text-xs"
+        >
+          {MODES.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              aria-pressed={state.mode === mode.id}
+              onClick={() => switchMode(mode.id)}
+              className={
+                "px-3 py-1.5 font-medium transition-colors " +
+                (state.mode === mode.id
+                  ? "bg-gold-400/15 text-gold-300"
+                  : "bg-night-800 text-slate-400 hover:text-slate-300")
+              }
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+        <span className="text-[10px] leading-tight text-slate-500">
+          切り替えても入力済みの内容は保持されます
+        </span>
+      </div>
+      {sections.map((section, index) =>
         section.kind === "record" ? (
           <Section
             key={section.id}
             icon={section.icon}
             title={section.title}
-            filledCount={countFilled(state.records[section.id] ?? {})}
+            filledCount={countFilled(state.records[section.id] ?? {}, section.fields)}
             defaultOpen={index === 0}
           >
             {section.fields.map((field) => (
@@ -521,7 +573,7 @@ export default function App() {
       </div>
       <div className="flex flex-wrap items-center gap-1.5 border-b border-night-600/70 px-4 py-2">
         <span className="mr-1 text-[10px] tracking-wide text-slate-500">テンプレート:</span>
-        {TEMPLATES.map((template) => {
+        {templates.map((template) => {
           const active = state.template === template.id;
           return (
             <button
@@ -544,7 +596,7 @@ export default function App() {
       </div>
       <div className="flex flex-wrap items-center gap-1.5 border-b border-night-600/70 px-4 py-2">
         <span className="mr-1 text-[10px] tracking-wide text-slate-500">出力するセクション:</span>
-        {SECTIONS.map((section) => {
+        {sections.map((section) => {
           const included = !state.hiddenSections.includes(section.id);
           return (
             <button

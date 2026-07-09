@@ -6,6 +6,7 @@
 
 ```json
 {
+  "mode": "novel",
   "records": { ... },
   "lists": { ... },
   "hiddenSections": [],
@@ -13,6 +14,7 @@
 }
 ```
 
+- `mode`: `"novel"`（小説）/ `"rpg"`（RPG）。省略時は novel
 - `hiddenSections`: 出力から除外するセクションid の配列。通常は `[]`
 - `template`: `"full"`（フル設計書）/ `"planning"`（企画用）/ `"writing"`（執筆用）/ `"review"`（校正用）
 
@@ -114,6 +116,29 @@
   ]
 }
 ```
+
+## RPGモード（mode: "rpg"）のキー
+
+小説モードと共通の構造で、セクションとキーが以下に変わる。**`chapters` / `scenes` / `foreshadows` は小説モードと同じidとキー**（ラベルが章・クエスト等に変わるだけ）で、章リンクのルールも同じ。
+
+records:
+
+- `basic`: title, tentativeTitle, **rpgType**(配列: ドラクエ式コマンドRPG / ローグライク（シレン式） / モンスター収集・育成（ポケモン式） / ハクスラ / オープンワールド / TRPG・ゲームブック), media(配列: スマホアプリ / PC（Steam等） / コンシューマ / ブラウザ / TRPG / ゲームブック), audience, playTime, volume, concept, selling
+- `system`: coreLoop, battle, growth, collection, dungeonGen, death, economy, party, difficulty
+- `world`: stage, era, magic, nations, religion, systems, commonSense, contradictions, start
+- `protagonist`: name, position, desire, personality, ability, weakness, secret, change, partyPolicy
+- `story`: incident, act1, act2, act3, climax, ending, twist, growth, theme
+- `instructions`: tasks(配列: 企画書作成 / 世界観設計 / システム設計 / メインシナリオ執筆 / クエスト設計 / イベントシーン執筆 / セリフ執筆 / モンスター図鑑作成 / ダンジョン設計 / バランス調整案 / 矛盾チェック), format, count, style, checks, mustRules, forbidden
+
+lists:
+
+- `characters`（仲間・NPC）: name, role, join, appearance, personality, goal, relation, ability, secret, speech, storyRole, change
+- `bosses`（敵・ボス）: name, rank, location, motive, gimmick, weakness, storyRole
+- `monsters`（モンスター設計）: name, category, habitat, ability, evolution, flavor, role
+- `dungeons`（ダンジョン・ロケーション）: name, type, timing, structure, monsters, boss, reward, storyRole
+- `chapters`（章・クエスト構成）: 小説と同じキー（title, purpose, start, events, highlight, end, hook）
+- `scenes`（イベントシーン）: 小説と同じキー（number, title, chapter, characters, place, purpose, events, emotion, impression, hook）
+- `foreshadows`（伏線・謎）: 小説と同じキー（name, intro, introChapter, presentation, truth, payoff, payoffChapter, effect）
 
 ## 重要な整合性ルール
 

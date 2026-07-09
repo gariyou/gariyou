@@ -1,6 +1,6 @@
-import type { AppState, SectionDef } from "./types";
+import type { AppState, FieldDef, Mode, SectionDef } from "./types";
 
-export const SECTIONS: SectionDef[] = [
+export const NOVEL_SECTIONS: SectionDef[] = [
   {
     kind: "record",
     id: "basic",
@@ -309,20 +309,460 @@ export const SECTIONS: SectionDef[] = [
   },
 ];
 
-/** 出力プロンプト末尾に常に付与する厳守事項 */
-export const STRICT_RULES = [
-  "設定と本文を混同しないこと",
-  "キャラクターの目的と口調を維持すること",
-  "世界観のルールを破らないこと",
-  "伏線を忘れないこと",
-  "説明過多にせず、場面・行動・会話で描写すること",
-  "不明点がある場合は勝手に確定せず、候補を提示すること",
+/**
+ * RPGモードのセクション構成。
+ * chapters / scenes / foreshadows は小説モードと同じ id・キーを使うことで、
+ * 章リンク（シーンのグルーピング・伏線の未回収警告）の仕組みを共有している。
+ */
+export const RPG_SECTIONS: SectionDef[] = [
+  {
+    kind: "record",
+    id: "basic",
+    title: "企画基本情報",
+    icon: "01",
+    fields: [
+      { key: "title", label: "作品タイトル", type: "text", placeholder: "黄昏の王国と忘れられた図鑑" },
+      { key: "tentativeTitle", label: "仮タイトル", type: "text", placeholder: "モンスター収集ダンジョンRPG（仮）" },
+      {
+        key: "rpgType",
+        label: "RPGタイプ",
+        type: "chips",
+        options: [
+          "ドラクエ式コマンドRPG",
+          "ローグライク（シレン式）",
+          "モンスター収集・育成（ポケモン式）",
+          "ハクスラ",
+          "オープンワールド",
+          "TRPG・ゲームブック",
+        ],
+      },
+      {
+        key: "media",
+        label: "想定プラットフォーム",
+        type: "chips",
+        options: ["スマホアプリ", "PC（Steam等）", "コンシューマ", "ブラウザ", "TRPG", "ゲームブック"],
+      },
+      { key: "audience", label: "対象プレイヤー", type: "text", placeholder: "昔ドラクエとポケモンで育った30〜40代" },
+      { key: "playTime", label: "想定プレイ時間", type: "text", placeholder: "メイン30時間＋やり込み50時間" },
+      { key: "volume", label: "想定ボリューム", type: "text", placeholder: "全8章、ダンジョン12、モンスター150種" },
+      {
+        key: "concept",
+        label: "一言コンセプト",
+        type: "textarea",
+        placeholder: "滅びた王国の廃墟で、魔物を仲間にしながら王家の謎を解くダンジョンRPG",
+      },
+      {
+        key: "selling",
+        label: "作品の売り",
+        type: "textarea",
+        placeholder: "モンスター合成の奥深さと、周回ごとに構造が変わる裏ダンジョン",
+      },
+    ],
+  },
+  {
+    kind: "record",
+    id: "system",
+    title: "ゲームシステム",
+    icon: "02",
+    fields: [
+      {
+        key: "coreLoop",
+        label: "コアループ",
+        type: "textarea",
+        placeholder: "拠点で準備 → ダンジョン探索 → 素材と仲間を持ち帰る → 強化して再挑戦",
+      },
+      {
+        key: "battle",
+        label: "戦闘システム",
+        type: "textarea",
+        placeholder: "ターン制コマンドバトル。属性相性と隊列が鍵",
+      },
+      {
+        key: "growth",
+        label: "成長・育成システム",
+        type: "textarea",
+        placeholder: "レベル＋ジョブチェンジ。モンスターは進化と合成で強化",
+      },
+      {
+        key: "collection",
+        label: "収集・図鑑要素",
+        type: "textarea",
+        placeholder: "モンスター図鑑150種。捕獲率は状態異常と残りHPで変動",
+      },
+      {
+        key: "dungeonGen",
+        label: "ダンジョン構造（固定／ランダム生成）",
+        type: "textarea",
+        placeholder: "メインダンジョンは固定構造、裏ダンジョンはシレン式の自動生成で毎回変化",
+      },
+      {
+        key: "death",
+        label: "敗北・死亡時のルール",
+        type: "textarea",
+        placeholder: "全滅で所持金半分を失い拠点へ。裏ダンジョンでは持ち込みアイテム全ロスト",
+      },
+      {
+        key: "economy",
+        label: "経済・アイテム・装備",
+        type: "textarea",
+        placeholder: "素材の売買と装備強化。レア素材はボスドロップ限定",
+      },
+      { key: "party", label: "パーティ編成", type: "text", placeholder: "主人公＋モンスター3体。拠点で控えと入れ替え可" },
+      {
+        key: "difficulty",
+        label: "難易度設計",
+        type: "textarea",
+        placeholder: "序盤は快適に進み、中盤から属性相性を考えないと詰まるバランス",
+      },
+    ],
+  },
+  {
+    kind: "record",
+    id: "world",
+    title: "世界観",
+    icon: "03",
+    fields: [
+      { key: "stage", label: "舞台", type: "text", placeholder: "封印が緩み始めた大陸の果て『黄昏の王国』" },
+      { key: "era", label: "時代・文明", type: "text", placeholder: "中世ファンタジー。地下に古代文明の遺産が眠る" },
+      {
+        key: "magic",
+        label: "魔法・技術",
+        type: "textarea",
+        placeholder: "魔物と心を通わせる『共鳴術』。古代文明の機械は動力源が失われている",
+      },
+      {
+        key: "nations",
+        label: "国家・組織・ギルド",
+        type: "textarea",
+        placeholder: "冒険者ギルド、王国再建をたくらむ旧貴族派、魔物の解放を叫ぶ教団",
+      },
+      { key: "religion", label: "宗教・伝承", type: "text", placeholder: "『最後の魔物が目覚めるとき王国は二度滅ぶ』という予言" },
+      {
+        key: "systems",
+        label: "世界の仕組み（移動・拠点・施設）",
+        type: "textarea",
+        placeholder: "拠点の村が施設解放で発展。各地の祠を解放するとファストトラベル開通",
+      },
+      { key: "commonSense", label: "世界の常識", type: "textarea", placeholder: "魔物は災いとされ、手なずける者は迫害される" },
+      {
+        key: "contradictions",
+        label: "世界の謎・違和感",
+        type: "textarea",
+        placeholder: "なぜ王国は一夜で滅びたのか。図鑑の最後の1体は誰も見たことがない",
+      },
+      {
+        key: "start",
+        label: "物語開始時点の状況",
+        type: "textarea",
+        placeholder: "主人公は記憶を失って廃都の門前で目を覚ます。手元には空白の図鑑が一冊",
+      },
+    ],
+  },
+  {
+    kind: "record",
+    id: "protagonist",
+    title: "主人公・パーティ",
+    icon: "04",
+    fields: [
+      { key: "name", label: "名前", type: "text", placeholder: "ノア（プレイヤーが変更可）" },
+      { key: "position", label: "立場", type: "text", placeholder: "記憶を失った見習いモンスター使い" },
+      { key: "desire", label: "動機・目的", type: "textarea", placeholder: "失った記憶と、空白の図鑑の意味を突き止める" },
+      { key: "personality", label: "性格", type: "textarea", placeholder: "口数少なめ（プレイヤーの分身）。選択肢で性格が出る" },
+      { key: "ability", label: "能力・ジョブ", type: "textarea", placeholder: "魔物と心を通わせる『共鳴』。本人は戦わず指揮特化" },
+      { key: "weakness", label: "弱点", type: "textarea", placeholder: "共鳴を使うたびに記憶の一部を失う" },
+      { key: "secret", label: "秘密", type: "textarea", placeholder: "実は滅びた王家の末裔で、図鑑は王家の封印目録" },
+      { key: "change", label: "成長・変化", type: "textarea", placeholder: "魔物を道具と見る世界の常識に抗い、共存の道を選ぶ" },
+      {
+        key: "partyPolicy",
+        label: "パーティの方針",
+        type: "textarea",
+        placeholder: "プレイヤーが捕まえたモンスター中心。人間の仲間は最大2人まで",
+      },
+    ],
+  },
+  {
+    kind: "list",
+    id: "characters",
+    title: "仲間・NPC",
+    icon: "05",
+    itemLabel: "キャラクター",
+    addLabel: "キャラクターを追加",
+    titleKey: "name",
+    fields: [
+      { key: "name", label: "名前", type: "text", placeholder: "リゼ" },
+      { key: "role", label: "役割", type: "text", placeholder: "ライバル／道具屋／賢者／ギルド受付" },
+      { key: "join", label: "登場・加入時期", type: "text", placeholder: "第二章、砂漠の街で加入" },
+      { key: "appearance", label: "外見", type: "text", placeholder: "赤いマフラーの少女。肩に相棒の小竜" },
+      { key: "personality", label: "性格", type: "textarea", placeholder: "負けず嫌いの努力家。主人公を勝手にライバル認定している" },
+      { key: "goal", label: "目的", type: "textarea", placeholder: "図鑑コンプリートで伝説のモンスター使いになる" },
+      { key: "relation", label: "主人公との関係", type: "textarea", placeholder: "各章の節目で対戦するライバル。終盤で共闘" },
+      { key: "ability", label: "能力・ジョブ", type: "textarea", placeholder: "速攻型の編成を好むモンスター使い" },
+      { key: "secret", label: "秘密", type: "textarea", placeholder: "教団の幹部の娘であることを隠している" },
+      { key: "speech", label: "口調", type: "text", placeholder: "強気なタメ口。「アンタ、また先に行く気！？」" },
+      { key: "storyRole", label: "物語上の役割", type: "textarea", placeholder: "プレイヤーの実力の指標。中盤で敵側の事情を知らせる" },
+      { key: "change", label: "最終的な変化", type: "textarea", placeholder: "勝敗より魔物との絆を優先するようになる" },
+    ],
+  },
+  {
+    kind: "list",
+    id: "bosses",
+    title: "敵・ボス",
+    icon: "06",
+    itemLabel: "ボス",
+    addLabel: "ボスを追加",
+    titleKey: "name",
+    fields: [
+      { key: "name", label: "名前", type: "text", placeholder: "深淵の王グラウザ" },
+      { key: "rank", label: "種別", type: "text", placeholder: "大ボス／中ボス／ライバル戦" },
+      { key: "location", label: "登場場所・時期", type: "text", placeholder: "第五章・沈黙の霊廟" },
+      { key: "motive", label: "動機・背景", type: "textarea", placeholder: "王国を滅ぼした張本人。だが本人は王国を守ったと信じている" },
+      {
+        key: "gimmick",
+        label: "戦闘ギミック",
+        type: "textarea",
+        placeholder: "3形態変化。第2形態で属性が反転し、直前の編成が裏目に出る",
+      },
+      { key: "weakness", label: "弱点・攻略の鍵", type: "textarea", placeholder: "霊廟で入手できる『鎮魂の鈴』で形態変化を1回スキップできる" },
+      { key: "storyRole", label: "物語上の役割", type: "textarea", placeholder: "倒した後、真の黒幕の存在が示唆される" },
+    ],
+  },
+  {
+    kind: "list",
+    id: "monsters",
+    title: "モンスター設計",
+    icon: "07",
+    itemLabel: "モンスター",
+    addLabel: "モンスターを追加",
+    titleKey: "name",
+    fields: [
+      { key: "name", label: "名前", type: "text", placeholder: "フレイムテイル" },
+      { key: "category", label: "分類・属性", type: "text", placeholder: "獣型／炎属性" },
+      { key: "habitat", label: "生息地", type: "text", placeholder: "火山洞窟の中層" },
+      { key: "ability", label: "能力・技", type: "textarea", placeholder: "尻尾の炎で全体攻撃。怒り状態になると攻撃が上がり防御が下がる" },
+      {
+        key: "evolution",
+        label: "進化・合成",
+        type: "textarea",
+        placeholder: "Lv18でヘルテイルに進化。水属性と合成すると蒸気竜スチムドラゴンに",
+      },
+      { key: "flavor", label: "図鑑フレーバー", type: "textarea", placeholder: "しっぽの炎は、嘘をつくと青くなるといわれている" },
+      { key: "role", label: "ゲーム内での位置づけ", type: "text", placeholder: "序盤の主力候補。捕獲チュートリアル担当" },
+    ],
+  },
+  {
+    kind: "list",
+    id: "dungeons",
+    title: "ダンジョン・ロケーション",
+    icon: "08",
+    itemLabel: "ロケーション",
+    addLabel: "ロケーションを追加",
+    titleKey: "name",
+    fields: [
+      { key: "name", label: "名前", type: "text", placeholder: "忘却の大迷宮" },
+      { key: "type", label: "種別", type: "text", placeholder: "メインダンジョン／街／フィールド／裏ダンジョン" },
+      { key: "timing", label: "攻略時期", type: "text", placeholder: "第三章" },
+      {
+        key: "structure",
+        label: "構造・ギミック",
+        type: "textarea",
+        placeholder: "全12層。水位が変わる仕掛けで、行ける層が入れ替わる",
+      },
+      { key: "monsters", label: "出現モンスター", type: "textarea", placeholder: "水属性中心。夜に入り直すと亡霊系が湧く" },
+      { key: "boss", label: "ボス", type: "text", placeholder: "守護者リヴァイア" },
+      { key: "reward", label: "獲得できるもの", type: "textarea", placeholder: "王家の紋章（キーアイテム）、蒸気合成の解放" },
+      { key: "storyRole", label: "物語上の役割", type: "textarea", placeholder: "壁画で王国滅亡の真実の一端が明かされる" },
+    ],
+  },
+  {
+    kind: "record",
+    id: "story",
+    title: "メインシナリオ",
+    icon: "09",
+    fields: [
+      { key: "incident", label: "オープニングの事件", type: "textarea", placeholder: "廃都で目覚めた主人公が、最初の魔物と共鳴してしまう" },
+      { key: "act1", label: "序盤（第一幕）", type: "textarea", placeholder: "拠点の村を復興しながら、図鑑と共鳴の使い方を学ぶ" },
+      { key: "act2", label: "中盤（第二幕）", type: "textarea", placeholder: "各地の祠を解放するうち、王国滅亡の夜の断片が見え始める" },
+      { key: "act3", label: "終盤（第三幕）", type: "textarea", placeholder: "図鑑の空白ページの正体が判明。教団が最後の封印を狙う" },
+      { key: "climax", label: "クライマックス", type: "textarea", placeholder: "図鑑No.000との対峙。倒すか、共鳴するかをプレイヤーが選ぶ" },
+      {
+        key: "ending",
+        label: "エンディング（分岐があれば条件も）",
+        type: "textarea",
+        placeholder: "討伐END／共存END／真ENDの3分岐。真ENDは図鑑完成が条件",
+      },
+      { key: "twist", label: "どんでん返し", type: "textarea", placeholder: "空白の図鑑の正体は、主人公自身の封印記録だった" },
+      { key: "growth", label: "主人公・パーティの変化", type: "textarea", placeholder: "迫害されていた魔物使いが、村人と魔物の橋渡し役になる" },
+      { key: "theme", label: "テーマ", type: "textarea", placeholder: "「化け物と呼ぶのは誰か」「集めることは支配か、理解か」" },
+    ],
+  },
+  {
+    kind: "list",
+    id: "chapters",
+    title: "章・クエスト構成",
+    icon: "10",
+    itemLabel: "章・クエスト",
+    addLabel: "章・クエストを追加",
+    titleKey: "title",
+    fields: [
+      { key: "title", label: "章・クエスト名", type: "text", placeholder: "第三章「水没都市の王笏」" },
+      { key: "purpose", label: "目的", type: "textarea", placeholder: "水没都市で王笏を回収し、二つ目の祠を解放する" },
+      { key: "start", label: "開始条件・状況", type: "textarea", placeholder: "大迷宮クリア後、港町で船を入手すると開始" },
+      { key: "events", label: "主な出来事", type: "textarea", placeholder: "水位ギミックの攻略、リゼとの再戦、教団の初登場" },
+      { key: "highlight", label: "山場・ボス戦", type: "textarea", placeholder: "守護者リヴァイア戦。水位を下げてから挑むと弱点が露出" },
+      { key: "end", label: "クリア時の状況・報酬", type: "textarea", placeholder: "王笏入手、蒸気合成解放。村に鍛冶屋が開店" },
+      { key: "hook", label: "次章への引き", type: "textarea", placeholder: "王笏に刻まれた紋章が、主人公の図鑑と同じだと判明する" },
+    ],
+  },
+  {
+    kind: "list",
+    id: "scenes",
+    title: "イベントシーン",
+    icon: "11",
+    itemLabel: "シーン",
+    addLabel: "シーンを追加",
+    titleKey: "title",
+    tagKey: "chapter",
+    fields: [
+      { key: "number", label: "シーン番号", type: "text", placeholder: "3-1" },
+      { key: "title", label: "シーンタイトル", type: "text", placeholder: "沈んだ玉座の間" },
+      { key: "chapter", label: "所属章・クエスト", type: "select" },
+      { key: "characters", label: "登場人物", type: "text", placeholder: "主人公、リゼ、守護者リヴァイア（会話のみ）" },
+      { key: "place", label: "場所", type: "text", placeholder: "水没都市・最深部" },
+      { key: "purpose", label: "目的", type: "textarea", placeholder: "教団の目的を初めて提示し、敵が一枚岩でないことを見せる" },
+      { key: "events", label: "起きる出来事・演出", type: "textarea", placeholder: "ボス戦後、リヴァイアが人語で「王家の子か」とつぶやいて消える" },
+      { key: "emotion", label: "プレイヤーに与えたい感情", type: "textarea", placeholder: "勝利の高揚から一転、自分の正体への不安" },
+      { key: "impression", label: "演出意図", type: "textarea", placeholder: "ボスを倒す爽快感と物語の謎を同時に深める" },
+      { key: "hook", label: "次への引き", type: "textarea", placeholder: "図鑑が勝手に開き、空白ページが1枚だけ光る" },
+    ],
+  },
+  {
+    kind: "list",
+    id: "foreshadows",
+    title: "伏線・謎",
+    icon: "12",
+    itemLabel: "伏線",
+    addLabel: "伏線を追加",
+    titleKey: "name",
+    fields: [
+      { key: "name", label: "伏線・謎の名前", type: "text", placeholder: "図鑑No.000の空白ページ" },
+      { key: "intro", label: "初出", type: "text", placeholder: "オープニング。誰にも読めない1ページ目として" },
+      { key: "introChapter", label: "初出の章・クエスト", type: "select" },
+      {
+        key: "presentation",
+        label: "見せ方",
+        type: "textarea",
+        placeholder: "図鑑UIの仕様（バグ？）に見せかけて、物語上の意味を悟らせない",
+      },
+      { key: "truth", label: "真相", type: "textarea", placeholder: "No.000は主人公自身。図鑑は王家の封印目録だった" },
+      { key: "payoff", label: "回収予定", type: "text", placeholder: "最終章・真ENDルート" },
+      { key: "payoffChapter", label: "回収の章・クエスト", type: "select" },
+      { key: "effect", label: "回収時の効果", type: "textarea", placeholder: "図鑑コンプリートというゲーム目標と物語の答えが一致する衝撃" },
+    ],
+  },
+  {
+    kind: "record",
+    id: "instructions",
+    title: "AIへの作業指示",
+    icon: "13",
+    fields: [
+      {
+        key: "tasks",
+        label: "AIにやらせたい作業",
+        type: "chips",
+        options: [
+          "企画書作成",
+          "世界観設計",
+          "システム設計",
+          "メインシナリオ執筆",
+          "クエスト設計",
+          "イベントシーン執筆",
+          "セリフ執筆",
+          "モンスター図鑑作成",
+          "ダンジョン設計",
+          "バランス調整案",
+          "矛盾チェック",
+        ],
+      },
+      { key: "format", label: "出力形式", type: "text", placeholder: "Markdown形式。企画書はセクション見出しつき" },
+      { key: "count", label: "分量", type: "text", placeholder: "企画書はA4換算5枚以内。シナリオは1シーン1,000字前後" },
+      { key: "style", label: "文体・トーン指定", type: "text", placeholder: "セリフとト書きを分ける。地の文は簡潔に" },
+      {
+        key: "checks",
+        label: "チェックしてほしい点",
+        type: "textarea",
+        placeholder: "システムと矛盾する展開、詰みの可能性、報酬バランス、伏線の回収漏れ",
+      },
+      {
+        key: "mustRules",
+        label: "絶対に守るルール",
+        type: "textarea",
+        placeholder: "企画資料にない固有名詞・仕様を勝手に作らない。不明点は作業前に質問する",
+      },
+      {
+        key: "forbidden",
+        label: "やってはいけないこと",
+        type: "textarea",
+        placeholder: "プレイヤーの選択の余地をなくす展開。ゲームシステムを無視した演出",
+      },
+    ],
+  },
 ];
 
-export function createEmptyState(): AppState {
+export const MODES: { id: Mode; label: string }[] = [
+  { id: "novel", label: "小説" },
+  { id: "rpg", label: "RPG" },
+];
+
+export function getSections(mode: Mode): SectionDef[] {
+  return mode === "rpg" ? RPG_SECTIONS : NOVEL_SECTIONS;
+}
+
+/**
+ * 保存データの取り込み用に、両モードのセクション・フィールドを統合した定義。
+ * モードを切り替えても、もう一方のモードで入力した値が消えないようにする。
+ */
+export const MERGE_SECTIONS: SectionDef[] = (() => {
+  const merged = new Map<string, SectionDef>();
+  for (const section of [...NOVEL_SECTIONS, ...RPG_SECTIONS]) {
+    const existing = merged.get(section.id);
+    if (!existing) {
+      merged.set(section.id, { ...section, fields: [...section.fields] });
+      continue;
+    }
+    const known = new Set(existing.fields.map((field) => field.key));
+    const extraFields: FieldDef[] = section.fields.filter((field) => !known.has(field.key));
+    merged.set(section.id, { ...existing, fields: [...existing.fields, ...extraFields] });
+  }
+  return [...merged.values()];
+})();
+
+/** 出力プロンプト末尾に常に付与する厳守事項 */
+export function getStrictRules(mode: Mode): string[] {
+  if (mode === "rpg") {
+    return [
+      "企画資料とシナリオ本文を混同しないこと",
+      "ゲームシステムのルールと矛盾する展開を作らないこと",
+      "キャラクター・モンスターの設定と口調を維持すること",
+      "伏線・謎を忘れないこと",
+      "プレイヤーの選択の余地を奪う演出過多にしないこと",
+      "不明点がある場合は勝手に確定せず、候補を提示すること",
+    ];
+  }
+  return [
+    "設定と本文を混同しないこと",
+    "キャラクターの目的と口調を維持すること",
+    "世界観のルールを破らないこと",
+    "伏線を忘れないこと",
+    "説明過多にせず、場面・行動・会話で描写すること",
+    "不明点がある場合は勝手に確定せず、候補を提示すること",
+  ];
+}
+
+export function createEmptyState(mode: Mode = "novel"): AppState {
   const records: AppState["records"] = {};
   const lists: AppState["lists"] = {};
-  for (const section of SECTIONS) {
+  // どちらのモードでも使えるよう、統合定義で初期化しておく
+  for (const section of MERGE_SECTIONS) {
     if (section.kind === "record") {
       const values: Record<string, string | string[]> = {};
       for (const field of section.fields) {
@@ -333,5 +773,5 @@ export function createEmptyState(): AppState {
       lists[section.id] = [];
     }
   }
-  return { records, lists, hiddenSections: [], template: "full" };
+  return { mode, records, lists, hiddenSections: [], template: "full" };
 }
