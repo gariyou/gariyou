@@ -21,3 +21,9 @@
 html {
   color-scheme: dark;
 }
+
+/* フローチャート画面は画面の高さぴったりに収める（dvh 非対応ブラウザは vh にフォールバック） */
+.flow-screen {
+  height: 100vh;
+  height: 100dvh;
+}
