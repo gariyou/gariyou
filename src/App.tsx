@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { sanitizeFlow } from "./flow";
+import { SETTINGS_FILE, forgetFolderHandle, useFolderSync } from "./folderSync";
 import { buildPrompt, estimateTokens, type PromptFormat } from "./prompt";
 import { MERGE_SECTIONS, MODES, createEmptyState, getSections } from "./schema";
 import { TEMPLATE_IDS, getTemplates } from "./templates";
@@ -15,11 +17,16 @@ import {
   writeIndex,
   type ProjectIndex,
 } from "./storage";
+import { FlowBoard } from "./components/FlowBoard";
 import { ListEditor } from "./components/ListEditor";
 import { FieldInput } from "./components/FieldInput";
 import { Section } from "./components/Section";
 
 const BACKUP_KEY = "ai-novel-prompt-builder:backup";
+/** 最後に開いていた画面（設計書／フローチャート） */
+const SCREEN_KEY = "ai-novel-prompt-builder:screen";
+
+type Screen = "design" | "flow";
 
 interface BackupPayload {
   savedAt: string;
@@ -125,6 +132,8 @@ function mergeState(base: AppState, incoming: Partial<AppState>): AppState {
     template: TEMPLATE_IDS.includes(incoming.template as string)
       ? (incoming.template as string)
       : base.template,
+    // スキルが作ったJSONなど flow が無いデータは、空のフローチャートとして扱う
+    flow: incoming.flow ? sanitizeFlow(incoming.flow) : base.flow,
   };
   for (const section of MERGE_SECTIONS) {
     if (section.kind === "record") {
@@ -186,6 +195,9 @@ export default function App() {
   const [previewMode, setPreviewMode] = useState<PromptFormat>("plain");
   const [mobileView, setMobileView] = useState<"form" | "preview">("form");
   const [hasBackup, setHasBackup] = useState(() => readBackup() !== null);
+  const [screen, setScreen] = useState<Screen>(() =>
+    safeGet(SCREEN_KEY) === "flow" ? "flow" : "design",
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 現在のプロジェクトへ自動保存（デバウンス付き）
@@ -199,6 +211,23 @@ export default function App() {
     }, 400);
     return () => window.clearTimeout(timer);
   }, [state, index]);
+
+  // 作品フォルダ（Cowork / Claude Code の novels/作品名/）の 設定.json との連動
+  const sync = useFolderSync({
+    projectId: index.activeId,
+    state,
+    parse: (text) => mergeState(createEmptyState(), JSON.parse(text) as Partial<AppState>),
+    apply: (next, reason) => {
+      if (reason === "link") backupCurrentState();
+      setState(next);
+    },
+    hasContent: stateHasContent(state),
+  });
+
+  const switchScreen = (next: Screen) => {
+    setScreen(next);
+    safeSet(SCREEN_KEY, next);
+  };
 
   /** 現在の状態をバックアップへ退避し、復元ボタンを表示する */
   const backupCurrentState = () => {
@@ -237,6 +266,7 @@ export default function App() {
     if (!window.confirm(message)) return;
     backupCurrentState();
     safeRemove(projectKey(index.activeId));
+    void forgetFolderHandle(index.activeId);
     const remaining = index.projects.filter((meta) => meta.id !== index.activeId);
     if (remaining.length === 0) {
       // 最後の1件を消したら、空の作品を作り直す
@@ -404,9 +434,11 @@ export default function App() {
   };
 
   const reset = () => {
+    const linkedNote =
+      sync.status === "linked" ? `\n連動中の「${sync.folderName}」の ${SETTINGS_FILE} も空になります。` : "";
     const message = stateHasContent(state)
-      ? "すべての入力内容を消去します。よろしいですか？\n（直前の内容はバックアップされ、「バックアップを復元」で戻せます）"
-      : "すべての入力内容を消去します。よろしいですか？";
+      ? `すべての入力内容を消去します。よろしいですか？${linkedNote}\n（直前の内容はバックアップされ、「バックアップを復元」で戻せます）`
+      : `すべての入力内容を消去します。よろしいですか？${linkedNote}`;
     if (!window.confirm(message)) return;
     backupCurrentState();
     // 空の状態が自動保存でプロジェクトへ書き込まれる
@@ -636,18 +668,72 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-night-950 text-slate-200">
-      <header className="sticky top-0 z-10 border-b border-night-600/70 bg-night-950/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3">
-          <div className="mr-auto">
-            <h1 className="font-serif-jp text-lg font-bold tracking-widest text-gold-300">
-              AI Novel Prompt Builder
-            </h1>
-            <p className="text-[11px] tracking-wide text-slate-500">
-              長編小説を破綻なく作るための設計書生成ツール
-            </p>
+    <div
+      className={
+        "bg-night-950 text-slate-200 " +
+        (screen === "flow" ? "flow-screen flex flex-col overflow-hidden" : "min-h-screen")
+      }
+    >
+      <header
+        className={
+          "z-10 border-b border-night-600/70 bg-night-950/90 backdrop-blur " +
+          (screen === "flow" ? "shrink-0" : "sticky top-0")
+        }
+      >
+        <div
+          className={
+            "mx-auto flex flex-wrap items-center gap-3 px-4 py-3 " +
+            (screen === "flow" ? "" : "max-w-7xl")
+          }
+        >
+          <div className="mr-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div>
+              <h1 className="font-serif-jp text-lg font-bold tracking-widest text-gold-300">
+                AI Novel Prompt Builder
+              </h1>
+              <p
+                className={
+                  "text-[11px] tracking-wide text-slate-500" +
+                  (screen === "flow" ? " hidden sm:block" : "")
+                }
+              >
+                長編小説を破綻なく作るための設計書生成ツール
+              </p>
+            </div>
+            <div
+              role="group"
+              aria-label="画面の切り替え"
+              className="flex overflow-hidden rounded-md border border-night-600 text-xs"
+            >
+              {(
+                [
+                  ["design", "設計書"],
+                  ["flow", "フローチャート"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={screen === id}
+                  onClick={() => switchScreen(id)}
+                  className={
+                    "px-3 py-1.5 font-medium transition-colors " +
+                    (screen === id
+                      ? "bg-gold-400/15 text-gold-300"
+                      : "bg-night-800 text-slate-400 hover:text-slate-300")
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          {/* フローチャート画面のスマホ表示では、キャンバスを広く取るため作品管理のボタンを隠す */}
+          <div
+            className={
+              "flex-wrap items-center gap-2 " + (screen === "flow" ? "hidden sm:flex" : "flex")
+            }
+          >
             <select
               value={index.activeId}
               onChange={(event) => switchProject(event.target.value)}
@@ -671,6 +757,44 @@ export default function App() {
               作品を削除
             </button>
             <span aria-hidden className="mx-1 hidden h-4 w-px bg-night-600 sm:block" />
+            {sync.supported &&
+              (sync.status === "linked" ? (
+                <span
+                  className="flex items-center gap-1.5 rounded-md border border-emerald-400/40 bg-emerald-400/10 px-2.5 py-1.5 text-xs text-emerald-300"
+                  title={`「${sync.folderName}」の ${SETTINGS_FILE} と自動で読み書きしています`}
+                >
+                  📁 {sync.folderName} と連動中
+                  {sync.lastSyncAt && (
+                    <span className="text-emerald-300/60">
+                      （{sync.lastSyncAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}）
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={sync.unlink}
+                    className="ml-1 text-emerald-300/70 underline underline-offset-2 hover:text-emerald-200"
+                  >
+                    解除
+                  </button>
+                </span>
+              ) : sync.status === "needs-permission" ? (
+                <button
+                  type="button"
+                  onClick={sync.reconnect}
+                  className="rounded-md border border-amber-400/50 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-400/20"
+                >
+                  📁 {sync.folderName} に再接続
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={sync.link}
+                  className={actionButtonClass}
+                  title={`Cowork / Claude Code の作品フォルダ（novels/作品名/）を選ぶと、中の ${SETTINGS_FILE} と自動で読み書きします`}
+                >
+                  📁 作品フォルダと連動
+                </button>
+              ))}
             <button type="button" onClick={exportJson} className={actionButtonClass}>
               JSONでエクスポート
             </button>
@@ -702,10 +826,18 @@ export default function App() {
             </button>
           </div>
         </div>
+        {sync.message && (
+          <div className="border-t border-night-600/70 px-4 py-1.5 text-[11px] text-emerald-200/90">
+            {sync.message}
+          </div>
+        )}
       </header>
 
+      {/* 作品を切り替えたら表示位置を合わせ直すため、作品ごとに作り直す */}
+      {screen === "flow" && <FlowBoard key={index.activeId} state={state} setState={setState} />}
+
       {/* モバイル用の表示切り替え */}
-      <div className="mx-auto max-w-7xl px-4 pt-3 lg:hidden">
+      <div className={"mx-auto max-w-7xl px-4 pt-3 lg:hidden" + (screen === "flow" ? " hidden" : "")}>
         <div className="flex overflow-hidden rounded-md border border-night-600">
           {(
             [
@@ -730,7 +862,12 @@ export default function App() {
         </div>
       </div>
 
-      <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 lg:grid-cols-2 lg:py-6">
+      <main
+        className={
+          "mx-auto grid max-w-7xl gap-4 px-4 py-4 lg:grid-cols-2 lg:py-6" +
+          (screen === "flow" ? " hidden" : "")
+        }
+      >
         <div className={mobileView === "form" ? "" : "hidden lg:block"}>{form}</div>
         <div
           className={

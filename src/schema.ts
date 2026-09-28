@@ -773,5 +773,12 @@ export function createEmptyState(mode: Mode = "novel"): AppState {
       lists[section.id] = [];
     }
   }
-  return { mode, records, lists, hiddenSections: [], template: "full" };
+  return {
+    mode,
+    records,
+    lists,
+    hiddenSections: [],
+    template: "full",
+    flow: { positions: {}, status: {}, notes: [], links: [] },
+  };
 }

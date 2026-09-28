@@ -10,13 +10,15 @@
   "records": { ... },
   "lists": { ... },
   "hiddenSections": [],
-  "template": "full"
+  "template": "full",
+  "flow": { ... }
 }
 ```
 
 - `mode`: `"novel"`（小説）/ `"rpg"`（RPG）。省略時は novel
 - `hiddenSections`: 出力から除外するセクションid の配列。通常は `[]`
 - `template`: `"full"`（フル設計書）/ `"planning"`（企画用）/ `"writing"`（執筆用）/ `"review"`（校正用）
+- `flow`: フローチャート画面の状態（省略可。下の「flow」を参照）
 
 ## records（単一入力セクション）
 
@@ -139,6 +141,29 @@ lists:
 - `chapters`（章・クエスト構成）: 小説と同じキー（title, purpose, start, events, highlight, end, hook）
 - `scenes`（イベントシーン）: 小説と同じキー（number, title, chapter, characters, place, purpose, events, emotion, impression, hook）
 - `foreshadows`（伏線・謎）: 小説と同じキー（name, intro, introChapter, presentation, truth, payoff, payoffChapter, effect）
+
+## flow（フローチャート画面の状態・省略可）
+
+アプリのフローチャート画面が、カードの配置・章の執筆状況・自由メモ・カード同士の線をここに保存する。設計書を新しく作るときは出力しなくてよい（省略すると空のフローチャートになる）。既存の `設定.json` を更新するときは、カードの配置やメモが消えないよう `flow` をそのまま残す。
+
+```json
+"flow": {
+  "positions": { "ch1": { "x": 40, "y": 40 } },
+  "status": { "ch1": "drafted", "ch2": "writing" },
+  "notes": [ { "id": "n1", "text": "ヒロインの登場を早める？" } ],
+  "links": [ { "id": "l1", "from": "n1", "to": "ch2" } ]
+}
+```
+
+- `status`: キーは `chapters[].id`。値は `"todo"`（未着手）/ `"writing"`（執筆中）/ `"drafted"`（書き上げ）/ `"revised"`（推敲済み）。キーが無い章は未着手
+- `positions`・`notes`・`links`: ユーザーが画面で作ったもの。スキルからは書き換えない
+
+## アプリとのファイル連動
+
+アプリの「作品フォルダと連動」で作品フォルダ（`novels/作品名/`）を選ぶと、アプリはその `設定.json` を自動で読み書きする。
+
+- ユーザーがアプリで編集すると、アプリは全キーを埋めた2スペース字下げの形式で `設定.json` を書き直す。スキルは読むたびにファイル全体を読み直し、書くときもファイル全体を書く
+- スキルが書き換えると、アプリは数秒以内に読み込み直す。ほぼ同時に両方が書いた場合は、スキル側の内容が残る
 
 ## 重要な整合性ルール
 

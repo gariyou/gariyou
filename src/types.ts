@@ -44,6 +44,32 @@ export interface ListItem {
   values: Record<string, string>;
 }
 
+/** 章の執筆状況（フローチャートで色分けする） */
+export type ChapterStatus = "todo" | "writing" | "drafted" | "revised";
+
+/** フローチャート上の自由メモ */
+export interface FlowNote {
+  id: string;
+  text: string;
+}
+
+/** フローチャート上でカード同士を結ぶ自由な線（from/to は章・シーン・メモの id） */
+export interface FlowLink {
+  id: string;
+  from: string;
+  to: string;
+}
+
+/** フローチャート画面の状態。章・シーン・伏線の中身は lists 側にあり、ここは配置と進行だけを持つ */
+export interface FlowState {
+  /** 手動で動かしたカードの位置（キーは章・シーン・メモの id）。無いカードは自動配置 */
+  positions: Record<string, { x: number; y: number }>;
+  /** 章の執筆状況（キーは章の id）。無い章は未着手 */
+  status: Record<string, ChapterStatus>;
+  notes: FlowNote[];
+  links: FlowLink[];
+}
+
 export interface AppState {
   /** 作品タイプ（省略時は novel として扱う） */
   mode: Mode;
@@ -53,4 +79,6 @@ export interface AppState {
   hiddenSections: string[];
   /** 出力テンプレート（フル設計書／企画用／執筆用／校正用）の id */
   template: string;
+  /** フローチャート画面の配置・執筆状況・メモ */
+  flow: FlowState;
 }

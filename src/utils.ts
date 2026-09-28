@@ -23,5 +23,9 @@ export function stateHasContent(state: AppState): boolean {
       Array.isArray(value) ? value.length > 0 : value.trim() !== "",
     ),
   );
-  return recordFilled || Object.values(state.lists).some((items) => items.length > 0);
+  return (
+    recordFilled ||
+    Object.values(state.lists).some((items) => items.length > 0) ||
+    state.flow.notes.length > 0
+  );
 }
