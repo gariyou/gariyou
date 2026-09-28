@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sanitizeFlow } from "./flow";
+import { SETTINGS_FILE, forgetFolderHandle, useFolderSync } from "./folderSync";
 import { buildPrompt, estimateTokens, type PromptFormat } from "./prompt";
 import { MERGE_SECTIONS, MODES, createEmptyState, getSections } from "./schema";
 import { TEMPLATE_IDS, getTemplates } from "./templates";
@@ -211,6 +212,18 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [state, index]);
 
+  // 作品フォルダ（Cowork / Claude Code の novels/作品名/）の 設定.json との連動
+  const sync = useFolderSync({
+    projectId: index.activeId,
+    state,
+    parse: (text) => mergeState(createEmptyState(), JSON.parse(text) as Partial<AppState>),
+    apply: (next, reason) => {
+      if (reason === "link") backupCurrentState();
+      setState(next);
+    },
+    hasContent: stateHasContent(state),
+  });
+
   const switchScreen = (next: Screen) => {
     setScreen(next);
     safeSet(SCREEN_KEY, next);
@@ -253,6 +266,7 @@ export default function App() {
     if (!window.confirm(message)) return;
     backupCurrentState();
     safeRemove(projectKey(index.activeId));
+    void forgetFolderHandle(index.activeId);
     const remaining = index.projects.filter((meta) => meta.id !== index.activeId);
     if (remaining.length === 0) {
       // 最後の1件を消したら、空の作品を作り直す
@@ -420,9 +434,11 @@ export default function App() {
   };
 
   const reset = () => {
+    const linkedNote =
+      sync.status === "linked" ? `\n連動中の「${sync.folderName}」の ${SETTINGS_FILE} も空になります。` : "";
     const message = stateHasContent(state)
-      ? "すべての入力内容を消去します。よろしいですか？\n（直前の内容はバックアップされ、「バックアップを復元」で戻せます）"
-      : "すべての入力内容を消去します。よろしいですか？";
+      ? `すべての入力内容を消去します。よろしいですか？${linkedNote}\n（直前の内容はバックアップされ、「バックアップを復元」で戻せます）`
+      : `すべての入力内容を消去します。よろしいですか？${linkedNote}`;
     if (!window.confirm(message)) return;
     backupCurrentState();
     // 空の状態が自動保存でプロジェクトへ書き込まれる
@@ -741,6 +757,44 @@ export default function App() {
               作品を削除
             </button>
             <span aria-hidden className="mx-1 hidden h-4 w-px bg-night-600 sm:block" />
+            {sync.supported &&
+              (sync.status === "linked" ? (
+                <span
+                  className="flex items-center gap-1.5 rounded-md border border-emerald-400/40 bg-emerald-400/10 px-2.5 py-1.5 text-xs text-emerald-300"
+                  title={`「${sync.folderName}」の ${SETTINGS_FILE} と自動で読み書きしています`}
+                >
+                  📁 {sync.folderName} と連動中
+                  {sync.lastSyncAt && (
+                    <span className="text-emerald-300/60">
+                      （{sync.lastSyncAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}）
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={sync.unlink}
+                    className="ml-1 text-emerald-300/70 underline underline-offset-2 hover:text-emerald-200"
+                  >
+                    解除
+                  </button>
+                </span>
+              ) : sync.status === "needs-permission" ? (
+                <button
+                  type="button"
+                  onClick={sync.reconnect}
+                  className="rounded-md border border-amber-400/50 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-400/20"
+                >
+                  📁 {sync.folderName} に再接続
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={sync.link}
+                  className={actionButtonClass}
+                  title={`Cowork / Claude Code の作品フォルダ（novels/作品名/）を選ぶと、中の ${SETTINGS_FILE} と自動で読み書きします`}
+                >
+                  📁 作品フォルダと連動
+                </button>
+              ))}
             <button type="button" onClick={exportJson} className={actionButtonClass}>
               JSONでエクスポート
             </button>
@@ -772,6 +826,11 @@ export default function App() {
             </button>
           </div>
         </div>
+        {sync.message && (
+          <div className="border-t border-night-600/70 px-4 py-1.5 text-[11px] text-emerald-200/90">
+            {sync.message}
+          </div>
+        )}
       </header>
 
       {/* 作品を切り替えたら表示位置を合わせ直すため、作品ごとに作り直す */}

@@ -16,6 +16,7 @@
 - `src/prompt.ts` — 完成プロンプトの組み立て（テキスト／Markdown／XML）
 - `src/App.tsx`・`src/storage.ts` — localStorage への保存、複数作品の管理、JSON の入出力（`mergeState`）
 - `src/flow.ts`・`src/components/FlowBoard.tsx` — フローチャート画面（カードの自動配置、執筆状況、メモと線）。状態は `AppState.flow`
+- `src/folderSync.ts` — 作品フォルダの `設定.json` との連動（File System Access API。連動先のフォルダは IndexedDB に記憶）
 - `.claude/skills/novel-prompt/` — スキル本体（`SKILL.md`）と `references/`
 
 ## スキルとアプリの同期
