@@ -15,7 +15,10 @@ function doGet() {
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
     .setTitle('チェックメモ')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
+    // Google サイトに埋め込むと上の「Google Apps Script のユーザーによって…」の帯が出ないので、埋め込みを許可する。
+    // アクセスは「自分のみ」のままなので、他人のページに埋め込まれても中身は見えない。
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /** クライアントと共有する操作ロジックのソース(テンプレートから埋め込む) */
