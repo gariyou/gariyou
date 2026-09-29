@@ -48,3 +48,13 @@ PC でやるのが楽ですが、Android の Chrome でも「PC 版サイト」�
 - 保存先: Google ドライブの `チェックメモ` フォルダ内 `checkmemo-data.json`(メニューの「ドライブの保存ファイルを開く」から開けます)
 - ファイルは JSON なので、バックアップはこのファイルをコピーするだけです
 - ファイルを削除すると、次回起動時に空の状態で作り直されます
+
+## clasp でのデプロイ(コマンドで更新する場合)
+
+このフォルダの `.clasp.json` はデプロイ済みのプロジェクト「チェックメモ」を指しています。
+`clasp login` 済みなら、次のコマンドで URL を変えずに更新できます。
+
+```sh
+clasp push -f
+clasp create-deployment -i AKfycby04P6RRC-whCJNJuh1SshX4lBJrHXvs9-SOu3EP2duZMaL9dZPUXLNCiGJ0Sg7CibnFQ -d "更新"
+```
