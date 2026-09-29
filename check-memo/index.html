@@ -47,7 +47,7 @@
   }
   .top { display: flex; align-items: center; gap: 8px; }
   h1 { font-size: 20px; margin: 0; flex: 1; }
-  #status { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  #status { font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
   #status.warn { color: var(--danger); }
   .icon-btn { width: 40px; height: 40px; border-radius: 20px; font-size: 20px; }
   .icon-btn:active { background: var(--line); }
@@ -65,7 +65,7 @@
   .tab.on { color: var(--accent); border-color: var(--accent); }
   .count { font-weight: 400; font-size: 13px; margin-left: 4px; }
 
-  main { padding: 8px 16px 110px; }
+  main { padding: 0 16px 40px; }
   .empty { text-align: center; color: var(--muted); padding: 48px 0; }
 
   .item {
@@ -90,9 +90,7 @@
   .day span { color: var(--muted); font-weight: 400; }
 
   .adder {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
-    background: var(--bg); border-top: 1px solid var(--line);
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    padding: 10px 0 8px;
     display: flex; gap: 8px; align-items: flex-end;
   }
   .adder textarea {
@@ -126,7 +124,7 @@
   .menu-list button:last-child { border-bottom: 0; }
 
   #toast {
-    position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(20px);
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
     background: #2a2f2d; color: #fff; border-radius: 12px; padding: 10px 14px;
     display: flex; gap: 14px; align-items: center; font-size: 14px;
     opacity: 0; pointer-events: none; transition: .2s; z-index: 20; width: max-content; max-width: 92vw;
@@ -148,14 +146,13 @@
     <button class="tab on" data-tab="todo">やること<span class="count" id="todoCount"></span></button>
     <button class="tab" data-tab="done">完了<span class="count" id="doneCount"></span></button>
   </div>
+  <div class="adder" id="adder">
+    <textarea id="newText" rows="1" placeholder="やることを追加"></textarea>
+    <button class="add-btn" id="addBtn">追加</button>
+  </div>
 </header>
 
 <main id="main"></main>
-
-<div class="adder" id="adder">
-  <textarea id="newText" rows="1" placeholder="やることを追加"></textarea>
-  <button class="add-btn" id="addBtn">追加</button>
-</div>
 
 <dialog id="editDlg">
   <h2>編集</h2>
@@ -248,27 +245,51 @@
     el.className = warn ? 'warn' : '';
   }
 
+  // サーバー呼び出し。30秒返事がなければ失敗扱いにして再試行する。
+  // 失敗理由は lastError に残し、ステータスをタップすると見られる。
+  var lastError = '';
+  function call(name, arg, onOk, onFail) {
+    var done = false;
+    var timer = setTimeout(function () { finish(null, new Error('30秒以上応答がありません')); }, 30000);
+    function finish(data, err) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      inflight = false;
+      if (!err) {
+        try { onOk(data); lastError = ''; return; } catch (e) { err = e; }
+      }
+      lastError = name + ': ' + (err && err.message || err);
+      onFail();
+      scheduleRetry();
+    }
+    var run = google.script.run
+      .withSuccessHandler(function (data) { finish(data, null); })
+      .withFailureHandler(function (err) { finish(null, err || new Error('不明なエラー')); });
+    arg === undefined ? run[name]() : run[name](arg);
+  }
+
+  function accept(data) {
+    if (!data || !data.lists) throw new Error('サーバーから不正なデータ: ' + JSON.stringify(data));
+    server = data; hasLoaded = true;
+    store(CACHE_KEY, server);
+  }
+
   function flush() {
     if (inflight) return;
     if (!pending.length) { if (hasLoaded) setStatus('☁ 保存済み'); return; }
     inflight = true;
     setStatus('保存中…');
     var batch = pending.slice();
-    google.script.run
-      .withSuccessHandler(function (data) {
-        inflight = false;
-        server = data; hasLoaded = true;
-        pending = pending.slice(batch.length);
-        store(CACHE_KEY, server); store(PENDING_KEY, pending);
-        rebuild(); render();
-        flush();
-      })
-      .withFailureHandler(function () {
-        inflight = false;
-        setStatus('未保存 ' + pending.length + '件(再試行します)', true);
-        scheduleRetry();
-      })
-      .applyOps(batch);
+    call('applyOps', batch, function (data) {
+      accept(data);
+      pending = pending.slice(batch.length);
+      store(PENDING_KEY, pending);
+      rebuild(); render();
+      flush();
+    }, function () {
+      setStatus('⚠ 未保存 ' + pending.length + '件', true);
+    });
   }
 
   function refresh() {
@@ -276,25 +297,22 @@
     if (inflight) return;
     inflight = true;
     setStatus('同期中…');
-    google.script.run
-      .withSuccessHandler(function (data) {
-        inflight = false;
-        server = data; hasLoaded = true;
-        store(CACHE_KEY, server);
-        rebuild(); render();
-        flush();
-      })
-      .withFailureHandler(function () {
-        inflight = false;
-        setStatus(hasLoaded ? 'オフライン' : '読み込み失敗', true);
-        scheduleRetry();
-      })
-      .loadData();
+    call('loadData', undefined, function (data) {
+      accept(data);
+      rebuild(); render();
+      flush();
+    }, function () {
+      setStatus(hasLoaded ? '⚠ オフライン' : '⚠ 読み込み失敗', true);
+    });
   }
+
+  document.getElementById('status').onclick = function () {
+    alert(lastError ? '最後のエラー:\n' + lastError : 'エラーはありません');
+  };
 
   function scheduleRetry() {
     clearTimeout(retryTimer);
-    retryTimer = setTimeout(function () { pending.length ? flush() : refresh(); }, 15000);
+    retryTimer = setTimeout(function () { if (!inflight) pending.length ? flush() : refresh(); }, 15000);
   }
 
   // ---------------------------------------------------------------- 表示
