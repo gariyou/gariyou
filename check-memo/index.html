@@ -3,31 +3,34 @@
 <head>
 <base target="_top">
 <meta charset="utf-8">
-<meta name="theme-color" content="#2f6f5e">
+<meta name="theme-color" content="#121614">
 <style>
+  /* ダークがデフォルト。メニューからライトに切り替えると data-theme="light" が付く */
   :root {
+    --bg: #121614;
+    --surface: #1c2220;
+    --text: #e6ece9;
+    --muted: #8e9a95;
+    --line: #2b3431;
+    --accent: #6cc3a6;
+    --on-accent: #0e1512;
+    --accent-soft: #23352f;
+    --danger: #ff7b6b;
+    --shadow: none;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
     --bg: #f4f6f5;
     --surface: #ffffff;
     --text: #1d2421;
     --muted: #6b7671;
     --line: #e1e6e3;
     --accent: #2f6f5e;
+    --on-accent: #ffffff;
     --accent-soft: #e0efe9;
     --danger: #c0392b;
     --shadow: 0 1px 3px rgba(0,0,0,.08);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #121614;
-      --surface: #1c2220;
-      --text: #e6ece9;
-      --muted: #8e9a95;
-      --line: #2b3431;
-      --accent: #6cc3a6;
-      --accent-soft: #23352f;
-      --danger: #ff7b6b;
-      --shadow: none;
-    }
+    color-scheme: light;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; }
@@ -55,8 +58,7 @@
     flex: none; padding: 6px 14px; border-radius: 999px; font-size: 14px;
     background: var(--surface); border: 1px solid var(--line);
   }
-  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-  @media (prefers-color-scheme: dark) { .chip.on { color: #0e1512; } }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
   .tabs { display: flex; margin-top: 10px; border-bottom: 1px solid var(--line); }
   .tab { flex: 1; padding: 10px 0; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; }
@@ -77,7 +79,7 @@
     flex: none; width: 26px; height: 26px; border-radius: 13px; margin-top: 0;
     border: 2px solid var(--muted); display: grid; place-items: center; font-size: 15px; color: transparent;
   }
-  .item.leaving .check, .check.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .item.leaving .check, .check.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .text { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; padding-top: 1px; }
   .item.leaving .text { text-decoration: line-through; color: var(--muted); }
   .meta { font-size: 12px; color: var(--muted); }
@@ -99,8 +101,7 @@
     padding: 10px 12px; max-height: 120px; outline: none;
   }
   .adder textarea:focus { border-color: var(--accent); }
-  .add-btn { flex: none; height: 44px; padding: 0 18px; border-radius: 12px; background: var(--accent); color: #fff; font-weight: 700; }
-  @media (prefers-color-scheme: dark) { .add-btn { color: #0e1512; } }
+  .add-btn { flex: none; height: 44px; padding: 0 18px; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-weight: 700; }
   .adder.hidden { display: none; }
 
   .danger-link { display: block; margin: 28px auto 0; color: var(--danger); font-size: 14px; }
@@ -119,8 +120,7 @@
   .row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
   .row .sp { flex: 1; }
   .btn { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
-  @media (prefers-color-scheme: dark) { .btn.primary { color: #0e1512; } }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; }
   .btn.danger { color: var(--danger); }
   .menu-list button { display: block; width: 100%; text-align: left; padding: 12px 4px; border-bottom: 1px solid var(--line); }
   .menu-list button:last-child { border-bottom: 0; }
@@ -181,6 +181,7 @@
     <button id="mRename">✎ このリストの名前を変える</button>
     <button id="mDelList">🗑 このリストを削除</button>
     <button id="mSync">↻ 今すぐ同期</button>
+    <button id="mTheme"></button>
     <button id="mDrive">📁 ドライブの保存ファイルを開く</button>
   </div>
   <div class="row"><span class="sp"></span><button class="btn" id="menuClose">閉じる</button></div>
@@ -531,6 +532,17 @@
     }
   };
   document.getElementById('mSync').onclick = function () { menuDlg.close(); refresh(); };
+  function applyTheme() {
+    if (ui.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    else document.documentElement.removeAttribute('data-theme');
+    document.getElementById('mTheme').textContent = ui.theme === 'light' ? '🌙 ダークモードにする' : '☀ ライトモードにする';
+  }
+  document.getElementById('mTheme').onclick = function () {
+    ui.theme = ui.theme === 'light' ? 'dark' : 'light';
+    applyTheme(); store(UI_KEY, ui); menuDlg.close();
+  };
+  applyTheme();
+
   document.getElementById('mDrive').onclick = function () {
     menuDlg.close();
     google.script.run.withSuccessHandler(function (url) { window.open(url, '_blank'); }).getFileUrl();
