@@ -15,8 +15,7 @@ function doGet() {
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
     .setTitle('チェックメモ')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
-    .setFaviconUrl('https://fonts.gstatic.com/s/i/materialiconsround/check_circle/v6/24px.svg');
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
 
 /** クライアントと共有する操作ロジックのソース(テンプレートから埋め込む) */
