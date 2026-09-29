@@ -102,6 +102,28 @@
   .add-btn { flex: none; height: 44px; padding: 0 18px; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-weight: 700; }
   .adder.hidden { display: none; }
 
+  .new-note {
+    display: block; width: 100%; margin: 10px 0 4px; padding: 12px;
+    border: 1px dashed var(--line); border-radius: 12px; color: var(--accent); font-weight: 700;
+  }
+  .note-card { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); padding: 12px 14px; margin: 8px 0; cursor: pointer; }
+  .note-card .t { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .note-card .p {
+    color: var(--muted); font-size: 14px; white-space: pre-wrap; word-break: break-word;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .note-bar { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; }
+  .note-bar .meta { flex: 1; text-align: right; }
+  .note-title {
+    width: 100%; font: inherit; font-size: 21px; font-weight: 700; color: var(--text);
+    background: transparent; border: 0; outline: none; padding: 8px 0;
+  }
+  .note-body {
+    width: 100%; min-height: 60vh; font: inherit; line-height: 1.75; color: var(--text);
+    background: transparent; border: 0; outline: none; resize: none; padding: 0; overflow: hidden;
+  }
+  .note-title::placeholder, .note-body::placeholder { color: var(--muted); }
+
   .danger-link { display: block; margin: 28px auto 0; color: var(--danger); font-size: 14px; }
 
   dialog {
@@ -145,6 +167,7 @@
   <div class="tabs">
     <button class="tab on" data-tab="todo">やること<span class="count" id="todoCount"></span></button>
     <button class="tab" data-tab="done">完了<span class="count" id="doneCount"></span></button>
+    <button class="tab" data-tab="memo">メモ<span class="count" id="memoCount"></span></button>
   </div>
   <div class="adder" id="adder">
     <textarea id="newText" rows="1" placeholder="やることを追加"></textarea>
@@ -223,6 +246,7 @@
 
   function rebuild() {
     var d = JSON.parse(JSON.stringify(server || emptyData_()));
+    if (!d.notes) d.notes = [];
     pending.forEach(function (op) { applyOp_(d, op); });
     view = d;
     if (!view.lists.some(function (l) { return l.id === ui.listId; })) ui.listId = view.lists[0].id;
@@ -346,18 +370,143 @@
     lists.innerHTML = '';
     view.lists.forEach(function (l) {
       var c = el('button', 'chip' + (l.id === ui.listId ? ' on' : ''), l.name);
-      c.onclick = function () { ui.listId = l.id; render(); };
+      c.onclick = function () {
+        if (ui.noteId) closeNote();
+        ui.listId = l.id; render();
+      };
       lists.appendChild(c);
     });
 
     document.getElementById('todoCount').textContent = todos.length || '';
     document.getElementById('doneCount').textContent = dones.length || '';
+    var notes = mine(view.notes);
+    document.getElementById('memoCount').textContent = notes.length || '';
     document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === ui.tab); });
     document.getElementById('adder').classList.toggle('hidden', ui.tab !== 'todo');
 
     var main = document.getElementById('main');
+    var openNote = ui.tab === 'memo' && ui.noteId ? findNote(ui.noteId) : null;
+    if (ui.tab === 'memo' && ui.noteId && !openNote) ui.noteId = null;
+    // 書いている最中のメモは作り直さない(カーソルや入力中の文字が消えないように)
+    if (openNote && mountedNoteId === openNote.id) { updateNoteMeta(openNote); return; }
+    mountedNoteId = null;
     main.innerHTML = '';
-    if (ui.tab === 'todo') renderTodo(main, todos); else renderDone(main, dones);
+    if (ui.tab === 'todo') renderTodo(main, todos);
+    else if (ui.tab === 'done') renderDone(main, dones);
+    else if (openNote) renderNoteEditor(main, openNote);
+    else renderNotes(main, notes);
+  }
+
+  // ---------------------------------------------------------------- メモ(ページ形式)
+
+  var mountedNoteId = null;
+  var noteDraft = null;   // まだ送っていない編集 {id, title, body}
+  var noteTimer = null;
+
+  function findNote(id) { return view.notes.filter(function (n) { return n.id === id; })[0]; }
+  function noteTitle(n) { return n.title.trim() || n.body.trim().split('\n')[0] || '無題のメモ'; }
+  function stamp(iso) { return dayLabel(iso) + ' ' + timeLabel(iso); }
+
+  function renderNotes(main, notes) {
+    var add = el('button', 'new-note', '＋ 新しいメモ');
+    add.onclick = newNote;
+    main.appendChild(add);
+    if (!notes.length) { main.appendChild(el('div', 'empty', 'メモはまだありません')); return; }
+    notes.slice().sort(function (a, b) { return a.updatedAt < b.updatedAt ? 1 : -1; }).forEach(function (n) {
+      var card = el('div', 'note-card');
+      card.appendChild(el('div', 't', noteTitle(n)));
+      var preview = n.title.trim() ? n.body.trim() : n.body.trim().split('\n').slice(1).join('\n').trim();
+      if (preview) card.appendChild(el('div', 'p', preview));
+      card.appendChild(el('div', 'meta', stamp(n.updatedAt)));
+      card.onclick = function () { ui.noteId = n.id; render(); window.scrollTo(0, 0); };
+      main.appendChild(card);
+    });
+  }
+
+  function renderNoteEditor(main, n) {
+    mountedNoteId = n.id;
+    var bar = el('div', 'note-bar');
+    var back = el('button', 'small-btn', '← 一覧');
+    back.onclick = closeNote;
+    var meta = el('span', 'meta');
+    meta.id = 'noteMeta';
+    var del = el('button', 'small-btn', '削除');
+    del.style.color = 'var(--danger)';
+    del.onclick = deleteOpenNote;
+    bar.appendChild(back); bar.appendChild(meta); bar.appendChild(del);
+
+    var title = el('input', 'note-title');
+    title.id = 'noteTitle';
+    title.placeholder = 'タイトル';
+    title.value = n.title;
+    var body = el('textarea', 'note-body');
+    body.id = 'noteBody';
+    body.placeholder = 'ここに書く…';
+    body.value = n.body;
+
+    function grow() { body.style.height = 'auto'; body.style.height = body.scrollHeight + 'px'; }
+    function changed() {
+      noteDraft = { id: n.id, title: title.value, body: body.value };
+      clearTimeout(noteTimer);
+      noteTimer = setTimeout(saveNoteDraft, 800);
+      setStatus('入力中…');
+      grow();
+    }
+    title.addEventListener('input', changed);
+    body.addEventListener('input', changed);
+    title.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); body.focus(); }
+    });
+
+    main.appendChild(bar); main.appendChild(title); main.appendChild(body);
+    updateNoteMeta(n);
+    setTimeout(grow, 0);
+  }
+
+  function updateNoteMeta(n) {
+    var m = document.getElementById('noteMeta');
+    if (m) m.textContent = '更新 ' + stamp(n.updatedAt);
+  }
+
+  function saveNoteDraft() {
+    clearTimeout(noteTimer);
+    var d = noteDraft;
+    noteDraft = null;
+    if (!d) return;
+    var n = findNote(d.id);
+    if (!n || (n.title === d.title && n.body === d.body)) { flush(); return; }
+    commit({ type: 'editNote', id: d.id, title: d.title, body: d.body, at: now() });
+  }
+
+  function newNote() {
+    var id = uid();
+    ui.noteId = id;
+    commit({ type: 'addNote', id: id, listId: ui.listId, at: now() });
+    var t = document.getElementById('noteTitle');
+    if (t) t.focus();
+  }
+
+  function closeNote() {
+    saveNoteDraft();
+    var n = ui.noteId && findNote(ui.noteId);
+    ui.noteId = null;
+    mountedNoteId = null;
+    // 何も書かずに閉じたメモは残さない
+    if (n && !n.title.trim() && !n.body.trim()) commit({ type: 'deleteNote', id: n.id });
+    else render();
+  }
+
+  function deleteOpenNote() {
+    saveNoteDraft();
+    var n = findNote(ui.noteId);
+    if (!n) return;
+    var copy = JSON.parse(JSON.stringify(n));
+    ui.noteId = null;
+    mountedNoteId = null;
+    commit({ type: 'deleteNote', id: n.id });
+    toast('「' + short(noteTitle(copy)) + '」を削除しました', function () {
+      commit({ type: 'restoreNote', note: copy });
+    });
   }
 
   function renderTodo(main, todos) {
@@ -460,7 +609,10 @@
   // ---------------------------------------------------------------- タブ
 
   document.querySelectorAll('.tab').forEach(function (t) {
-    t.onclick = function () { ui.tab = t.dataset.tab; render(); window.scrollTo(0, 0); };
+    t.onclick = function () {
+      if (ui.tab === 'memo' && ui.noteId) closeNote();
+      ui.tab = t.dataset.tab; ui.noteId = null; render(); window.scrollTo(0, 0);
+    };
   });
 
   // ---------------------------------------------------------------- 編集
@@ -568,7 +720,10 @@
 
   // ---------------------------------------------------------------- 起動
 
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) saveNoteDraft(); else refresh();
+  });
+  window.addEventListener('pagehide', saveNoteDraft);
   window.addEventListener('online', function () { refresh(); });
 
   rebuild();

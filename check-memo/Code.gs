@@ -80,6 +80,7 @@ function readData_(file) {
   if (!data || !data.lists) data = emptyData_();
   if (!data.tasks) data.tasks = [];
   if (!data.done) data.done = [];
+  if (!data.notes) data.notes = [];
   if (!data.lists.length) data.lists = emptyData_().lists;
   return data;
 }
@@ -92,6 +93,7 @@ function emptyData_() {
     lists: [{ id: 'default', name: 'メモ' }],
     tasks: [],
     done: [],
+    notes: [],
     updatedAt: null
   };
 }
@@ -102,6 +104,7 @@ function applyOp_(data, op) {
     return -1;
   }
   var i;
+  if (!data.notes) data.notes = [];
   switch (op.type) {
     case 'add':
       if (idx(data.tasks, op.id) < 0 && idx(data.done, op.id) < 0) {
@@ -145,6 +148,24 @@ function applyOp_(data, op) {
     case 'clearDone':
       data.done = data.done.filter(function (x) { return op.listId && x.listId !== op.listId; });
       break;
+    case 'addNote':
+      if (idx(data.notes, op.id) < 0) {
+        data.notes.push({ id: op.id, listId: op.listId, title: '', body: '', createdAt: op.at, updatedAt: op.at });
+      }
+      break;
+    case 'editNote':
+      if ((i = idx(data.notes, op.id)) >= 0) {
+        data.notes[i].title = op.title;
+        data.notes[i].body = op.body;
+        data.notes[i].updatedAt = op.at;
+      }
+      break;
+    case 'deleteNote':
+      if ((i = idx(data.notes, op.id)) >= 0) data.notes.splice(i, 1);
+      break;
+    case 'restoreNote':
+      if (idx(data.notes, op.note.id) < 0) data.notes.push(op.note);
+      break;
     case 'addList':
       if (idx(data.lists, op.id) < 0) data.lists.push({ id: op.id, name: op.name });
       break;
@@ -156,6 +177,7 @@ function applyOp_(data, op) {
         data.lists.splice(i, 1);
         data.tasks = data.tasks.filter(function (x) { return x.listId !== op.id; });
         data.done = data.done.filter(function (x) { return x.listId !== op.id; });
+        data.notes = data.notes.filter(function (x) { return x.listId !== op.id; });
       }
       break;
   }
