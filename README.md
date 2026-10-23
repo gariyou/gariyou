@@ -90,6 +90,10 @@ npm run preview
   cd .claude/skills/novel-prompt && zip -r ../novel-prompt-skill.zip SKILL.md references
   ```
 
+## おまけ: Web ゲームの見本（灰燼の迷宮）
+
+RPG モードで設計したゲームを形にする例として、ブラウザで動く見下ろし型アクションの見本を [`game-demo/`](game-demo/) に置いています。`game-demo/index.html` を開くだけで遊べ、Tripo などで作った GLB モデルに差し替えられます。詳しくは [`game-demo/README.md`](game-demo/README.md) を参照してください。
+
 ## 改良案
 
 今後の拡張アイデア:
