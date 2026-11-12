@@ -13,10 +13,13 @@
   手 : 正面の絵で、体の両端にある肌色(なければ手袋)の塊から手の色を覚え、各向きで同じ色の塊を探す。
 動かし方:
   正面・背面 : 片脚を上へ持ち上げる
-  斜め       : 前に出す脚を進む向きへ、後ろの脚を逆へ。足は基準線より下へ出さない。
-               脚が交差する歩は小さく、開く歩は大きく動かす
+  斜め       : 前に出す脚が相手の脚の側へ動く歩(交差)は、横に動かさず片脚を持ち上げる。
+               離れる側へ動く歩(開き)は、前の脚を大きく、後ろの脚を小さく動かす。
+               足は基準線より下へ出さない
   横         : 脚の塊を前後へ。奥の脚は一段暗い複製
-  手         : 前に出た脚と反対側の手を前へ。横向きは前後に2ドット、それ以外は上下に1ドット
+  手         : 前に出た脚と反対側の手を前へ。横向きは前後に2ドット、それ以外は上下に1ドット。
+               輪郭線ごと動かし、空いた所は動く向きと逆側の画素で埋める
+  仕上げ     : 立ち絵に無かった1ドットの飛び出しを消し、1ドットの穴を埋める
 """
 import sys, json
 from pathlib import Path
@@ -282,47 +285,95 @@ def find_hands(cell, hem, hand, d):
     return hands
 
 
-def move_hand(img, hm, dx, dy, skin=False):
-    """手の塊(とそれを囲む輪郭線)を (dx,dy) 動かす。空いた所は手の向こう側の色で埋める。"""
-    if dx == 0 and dy == 0:
-        return
-    src = img.copy()
+def _nb4(y, x, H, W):
+    return [(ny, nx) for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1))
+            if 0 <= ny < H and 0 <= nx < W]
+
+
+def grow_hand(src, hm, skin):
+    """手の色に近い隣の画素も手に含める(取り残した肌色が伸びて見えるのを防ぐ)。
+    手袋は服や小物と色が近いので、広げる幅を狭くする。"""
     H, W = hm.shape
     px = src.astype(float)
     dark = lum(px) < 60
     solid = src[..., 3] > 0
-
-    def nb(y, x):
-        return [(ny, nx) for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1))
-                if 0 <= ny < H and 0 <= nx < W and solid[ny, nx]]
-
-    # 手の色に近い隣の画素も手に含める(取り残した肌色が伸びて見えるのを防ぐ)
     mean = px[hm][:, :3].mean(0)
     hand = hm.copy()
     for _ in range(2):
-        add = [(ny, nx) for y, x in zip(*np.where(hand)) for ny, nx in nb(y, x)
-               if not hand[ny, nx] and not dark[ny, nx] and (
-                   np.abs(px[ny, nx, :3] - mean).sum() < (100 if skin else 45)
-                   or (skin and px[ny, nx, 0] - px[ny, nx, 1] > 25 and px[ny, nx, 0] - px[ny, nx, 2] > 45))]
+        add = [q for y, x in zip(*np.where(hand)) for q in _nb4(y, x, H, W)
+               if solid[q] and not hand[q] and not dark[q] and (
+                   np.abs(px[q][:3] - mean).sum() < (100 if skin else 45)
+                   or (skin and px[q][0] - px[q][1] > 20 and px[q][0] - px[q][2] > 35))]
         if not add or hand.sum() + len(add) > 26:
             break
         for q in add:
             hand[q] = True
-    grow = hand.copy()
-    for y, x in zip(*np.where(hand)):
-        for ny, nx in nb(y, x):
-            if dark[ny, nx]:
-                grow[ny, nx] = True
-    # 空いた所を埋める: 動く向きと逆側にある、手ではない画素の色
-    for y, x in zip(*np.where(grow)):
+    return hand
+
+
+def ring_of(src, fill):
+    """塗りに接する暗い画素(輪郭線)。"""
+    H, W = fill.shape
+    dark = (lum(src.astype(float)) < 60) & (src[..., 3] > 0)
+    ring = np.zeros_like(fill)
+    for y, x in zip(*np.where(fill)):
+        for ny, nx in _nb4(y, x, H, W):
+            if dark[ny, nx] and not fill[ny, nx]:
+                ring[ny, nx] = True
+    return ring
+
+
+def shift_hand(img, hm, dx, dy, skin):
+    """手を輪郭線ごと (dx,dy) 動かす。空いた所は、動く向きと逆側にある画素で埋める
+    (下げれば上の袖が伸び、上げれば手の下にあったものが出る)。"""
+    if dx == 0 and dy == 0:
+        return
+    src = img.copy()
+    H, W = hm.shape
+    hand = grow_hand(src, hm, skin)
+    move = hand | ring_of(src, hand)
+    for y, x in zip(*np.where(move)):
         by, bx = y - dy, x - dx
-        while 0 <= by < H and 0 <= bx < W and grow[by, bx]:
+        while 0 <= by < H and 0 <= bx < W and move[by, bx]:
             by -= dy; bx -= dx
         img[y, x] = src[by, bx] if (0 <= by < H and 0 <= bx < W) else 0
-    for y, x in zip(*np.where(grow)):
-        ny, nx = y + dy, x + dx
-        if 0 <= ny < H and 0 <= nx < W:
-            img[ny, nx] = src[y, x]
+    for y, x in zip(*np.where(move)):
+        if 0 <= y + dy < H and 0 <= x + dx < W:
+            img[y + dy, x + dx] = src[y, x]
+    # 動かした跡に、体から1ドットだけ飛び出した線が残ったら消す
+    ys, xs = np.where(move)
+    for _ in range(2):
+        for y in range(max(1, ys.min() - 3), min(H - 1, ys.max() + 4)):
+            for x in range(max(1, xs.min() - 3), min(W - 1, xs.max() + 4)):
+                if img[y, x, 3] == 0 or lum(img[y, x].astype(float)) >= 60:
+                    continue
+                now = sum(1 for q in _nb4(y, x, H, W) if img[q][3] > 0)
+                before = sum(1 for q in _nb4(y, x, H, W) if src[q][3] > 0)
+                if now <= 1 and (before >= 2 or src[y, x, 3] == 0):
+                    img[y, x] = 0
+
+
+def tidy(frame, stand):
+    """仕上げ。立ち絵には無かった「1ドットだけの飛び出し」を消し、「1ドットの穴」を埋める。"""
+    H, W = frame.shape[:2]
+    ms = stand[..., 3] > 0
+
+    def n4(m, y, x):
+        return int(m[y - 1, x]) + int(m[y + 1, x]) + int(m[y, x - 1]) + int(m[y, x + 1])
+
+    m = frame[..., 3] > 0
+    for y in range(1, H - 1):
+        for x in range(1, W - 1):
+            if m[y, x] and n4(m, y, x) <= 1 and not (ms[y, x] and n4(ms, y, x) <= 1):
+                frame[y, x] = 0
+    m = frame[..., 3] > 0
+    for y in range(1, H - 1):
+        for x in range(1, W - 1):
+            if not m[y, x] and n4(m, y, x) == 4 and not (not ms[y, x] and n4(ms, y, x) == 4):
+                # まわりで一番暗くない色(塗り)を優先して埋める
+                nb = [frame[y - 1, x], frame[y + 1, x], frame[y, x - 1], frame[y, x + 1]]
+                frame[y, x] = max(nb, key=lambda c: float(lum(c.astype(float))))
+    return frame
 
 
 def make_frames(cell, d, leg_h, hand_color=(None, 0)):
@@ -339,6 +390,8 @@ def make_frames(cell, d, leg_h, hand_color=(None, 0)):
     lift = 2 if leg_h >= 3 else 1
     stride = 3 if leg_h >= 5 else 2   # 脚が短い(ローブなど)ときは小さく
     fx, fy = FACE[d]
+    skin = hand_color[1] < 0
+    bend = leg_h >= 5   # 脚が短い(ローブなど)ときは曲げずに塊ごと動かす
 
     hands = find_hands(cell, top - 1, hand_color, d)
     info['hands'] = len(hands)
@@ -355,15 +408,15 @@ def make_frames(cell, d, leg_h, hand_color=(None, 0)):
         b = body.copy()
         for hm in hands:
             if d in ('W', 'E'):
-                # 見えている手前の手は、手前の脚と逆に振る
-                move_hand(b, hm, (-2 if fwd_side == 'near' else 2) * fx, 0, hand_color[1] < 0)
+                # 見えている手前の腕は、手前の脚と逆に振る
+                shift_hand(b, hm, (-2 if fwd_side == 'near' else 2) * fx, 0, skin)
             else:
                 # 前に出た脚と反対側の手が前。前後は画面の上下で表す(手前向きなら前=下)
                 fwd = hand_side(hm) != fwd_side
-                move_hand(b, hm, 0, fy if fwd else -fy, hand_color[1] < 0)
+                shift_hand(b, hm, 0, fy if fwd else -fy, skin)
         # 持ち上げた脚が裾より上に出ないよう、胴体を最後に重ねる
         over(c, b)
-        return c
+        return tidy(c, cell)
 
     if d in ('S', 'N'):
         if R is None:  # 分けられないときは中央で割る
@@ -379,30 +432,41 @@ def make_frames(cell, d, leg_h, hand_color=(None, 0)):
         far_l = darker(whole)
         s = stride * fx
         # 手前の脚が前 / 奥の脚が前。後ろにある脚は1ドット上げる
-        left = compose([(far_l, -s, -1, True), (whole, s, 0, True)], 'near')
-        right = compose([(far_l, s, 0, True), (whole, -s, -1, True)], 'far')
+        left = compose([(far_l, -s, -1, bend), (whole, s, 0, bend)], 'near')
+        right = compose([(far_l, s, 0, bend), (whole, -s, -1, bend)], 'far')
         near, far = legmask, None
     else:
-        # 斜め。前に出す脚は進む向きへ、後ろの脚は逆へ。足は基準線より下へは出さない
-        up_f, up_b = min(0, fy), min(0, -fy)   # 前の脚 / 後ろの脚の上下
         near_side = NEAR_SIDE[d]
         far_side = 'R' if near_side == 'L' else 'L'
         if R is None:
+            # 脚を分けられない向き(ローブなど): 塊と暗い複製を小さく前後へ
             whole = take(cell, L)
             far_l = darker(whole)
-            left = compose([(far_l, -2 * fx, up_b, True), (whole, fx, up_f, True)], near_side)
-            right = compose([(far_l, 2 * fx, up_f, True), (whole, -fx, up_b, True)], far_side)
+            left = compose([(far_l, -fx, 0, bend), (whole, fx, 0, bend)], near_side)
+            right = compose([(far_l, fx, 0, bend), (whole, -fx, 0, bend)], far_side)
             near, far = L, None
         else:
             nm, fm = (L, R) if near_side == 'L' else (R, L)
             ln, lf = take(cell, nm), take(cell, fm)
             sn = -1 if near_side == 'L' else 1
-            # 手前の脚を前に出すと奥の脚と重なる向きかどうか。重なる歩は小さく、開く歩は大きく動かす
-            cross1 = (fx == -sn)
-            a1 = 1 if cross1 else 2
-            a2 = 2 if cross1 else 1
-            left = compose([(lf, -fx, up_b, True), (ln, a1 * fx, up_f, True)], near_side)
-            right = compose([(lf, a2 * fx, up_f, True), (ln, -fx, up_b, True)], far_side)
+            # 前に出す脚が相手の脚の側へ動く歩(交差)は、横には動かさず片脚を持ち上げる。
+            # 離れる側へ動く歩(開き)は、前の脚を大きく、後ろの脚を小さく動かす。
+            # 足は基準線より下へ出さない: 画面で奥になる側の脚を上げる。
+            up_f, up_b = min(0, fy), min(0, -fy)
+
+            def step(fwd_layer, back_layer, crossing):
+                if crossing:
+                    return [(back_layer, 0, lift * up_b, False), (fwd_layer, 0, lift * up_f, False)]
+                return [(back_layer, -fx, up_b, bend), (fwd_layer, 2 * fx, up_f, bend)]
+
+            cross1 = (fx == -sn)          # 手前の脚を前に出すと交差するか
+            p1 = step(ln, lf, cross1)
+            p2 = step(lf, ln, not cross1)
+            # 奥の脚を先に描く
+            p1 = sorted(p1, key=lambda t: t[0] is ln)
+            p2 = sorted(p2, key=lambda t: t[0] is ln)
+            left = compose(p1, near_side)
+            right = compose(p2, far_side)
             near, far = nm, fm
     return left, cell, right, info, near, far
 
